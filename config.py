@@ -13,7 +13,8 @@ CONTROL_MAX_ROLL_RATE = 45.0     # degrees per second
 CONTROL_PITCH_SENSITIVITY = 2.0  # multiplier: angle → rate
 CONTROL_MAX_PITCH_RATE = 45.0    # degrees per second
 CONTROL_MAX_RATE_CHANGE = 500.0  # max rate change per second (rate limiting)
-CONTROL_MAX_YAW_ANGLE = 45.0    # degrees, clamp range for yaw
+CONTROL_YAW_SENSITIVITY = 2.0    # multiplier: angle → rate
+CONTROL_MAX_YAW_RATE = 90.0     # degrees per second
 
 # --- Physics ---
 PHYSICS_TIMESTEP = 1.0 / 120.0   # fixed timestep (120 Hz)
@@ -22,6 +23,8 @@ DRONE_MASS = 0.5                  # kg
 DRAG_COEFFICIENT = 0.3            # linear drag
 MOTOR_RESPONSE_TIME = 0.1        # seconds (first-order lag)
 MAX_TILT_ANGLE = 45.0            # degrees, clamp roll/pitch
+MOVE_MAX_SPEED = 8.0             # m/s at full tilt (45°)
+MOVE_DRAG = 5.0                  # velocity smoothing (higher = snappier)
 
 # --- Altitude hold PID ---
 ALTITUDE_HOLD_TARGET = 2.0       # meters

@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class DroneCommand:
     roll_rate: float = 0.0     # degrees/sec
     pitch_rate: float = 0.0    # degrees/sec
-    yaw_angle: float = 0.0     # degrees, absolute target angle
+    yaw_rate: float = 0.0      # degrees/sec
 
 
 class ControlMapper:
@@ -27,6 +27,7 @@ class ControlMapper:
         self._smoothed_pitch = 0.0
         self._prev_pitch_rate = 0.0
         self._smoothed_yaw = 0.0
+        self._prev_yaw_rate = 0.0
 
     def map(self, tracking: TrackingResult, dt: float) -> DroneCommand:
         """Convert TrackingResult to DroneCommand with smoothing."""
@@ -61,10 +62,17 @@ class ControlMapper:
             cmd.pitch_rate = float(pitch_rate)
             self._prev_pitch_rate = cmd.pitch_rate
 
-            # --- Yaw pipeline (absolute angle, not rate) ---
+            # --- Yaw pipeline (rate-based, like roll/pitch) ---
             yaw_in = self._deadzone(tracking.yaw_angle, config.CONTROL_DEADZONE_DEG)
             self._smoothed_yaw = alpha * yaw_in + (1 - alpha) * self._smoothed_yaw
-            cmd.yaw_angle = float(self._smoothed_yaw)
+
+            yaw_rate = self._smoothed_yaw * config.CONTROL_YAW_SENSITIVITY
+            yaw_rate = np.clip(yaw_rate, -config.CONTROL_MAX_YAW_RATE, config.CONTROL_MAX_YAW_RATE)
+
+            yaw_rate = self._rate_limit(yaw_rate, self._prev_yaw_rate, max_change)
+
+            cmd.yaw_rate = float(yaw_rate)
+            self._prev_yaw_rate = cmd.yaw_rate
 
         else:
             # No gesture — zero out smoothly
@@ -73,6 +81,7 @@ class ControlMapper:
             self._smoothed_pitch *= 0.9
             self._prev_pitch_rate *= 0.9
             self._smoothed_yaw *= 0.9
+            self._prev_yaw_rate *= 0.9
 
         return cmd
 
@@ -97,3 +106,4 @@ class ControlMapper:
         self._smoothed_pitch = 0.0
         self._prev_pitch_rate = 0.0
         self._smoothed_yaw = 0.0
+        self._prev_yaw_rate = 0.0

@@ -1,5 +1,6 @@
-"""Drone orientation model — fixed position, roll + pitch for control testing."""
+"""Drone physics model — orientation + positional movement from tilt."""
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -51,10 +52,27 @@ class DronePhysics:
         if abs(command.pitch_rate) < 0.1:
             s.pitch *= (1.0 - 3.0 * dt)
 
-        # Yaw (absolute angle, already smoothed by ControlMapper)
-        s.yaw = command.yaw_angle
-        if abs(command.yaw_angle) < 0.1:
-            s.yaw *= (1.0 - 3.0 * dt)
+        # Yaw (rate-based, accumulates over time)
+        s.yaw += command.yaw_rate * dt
+
+        # --- Positional movement from tilt ---
+        # Body-frame speed: linear mapping from tilt angle to speed
+        body_forward = s.pitch / 45.0 * config.MOVE_MAX_SPEED
+        body_right = -s.roll / 45.0 * config.MOVE_MAX_SPEED
+
+        # Rotate body-frame to world-frame using yaw
+        yaw_rad = math.radians(s.yaw)
+        target_vx = body_forward * math.sin(yaw_rad) + body_right * math.cos(yaw_rad)
+        target_vz = body_forward * math.cos(yaw_rad) - body_right * math.sin(yaw_rad)
+
+        # Smooth velocity with drag (exponential approach)
+        blend = min(config.MOVE_DRAG * dt, 1.0)
+        s.vx += (target_vx - s.vx) * blend
+        s.vz += (target_vz - s.vz) * blend
+
+        # Integrate position (altitude unchanged)
+        s.x += s.vx * dt
+        s.z += s.vz * dt
 
     def reset(self):
         self.state = DroneState()

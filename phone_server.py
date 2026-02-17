@@ -50,7 +50,7 @@ class PhoneState:
             self.pitch = float(np.clip(-(beta - self._cal_beta), -45.0, 45.0))
             # Yaw from compass heading with wraparound handling
             delta = (alpha - self._cal_alpha + 180) % 360 - 180
-            self.yaw = float(np.clip(delta, -config.CONTROL_MAX_YAW_ANGLE, config.CONTROL_MAX_YAW_ANGLE))
+            self.yaw = float(np.clip(delta, -config.CONTROL_MAX_YAW_RATE, config.CONTROL_MAX_YAW_RATE))
             self.last_update = time.time()
             self.phone_timestamp = phone_timestamp
             self.connected = True
