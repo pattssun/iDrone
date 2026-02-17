@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Hand-Drone Gyro Control</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: #1a1a2e; color: #eee; font-family: -apple-system, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 100vh; overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+}
+h1 { font-size: 1.4em; margin-bottom: 0.5em; color: #0ff; }
+.status { font-size: 0.9em; margin-bottom: 1em; color: #888; }
+.status.connected { color: #0f0; }
+.status.disconnected { color: #f44; }
+
+.btn {
+    display: inline-block; padding: 16px 32px; margin: 8px;
+    font-size: 1.1em; font-weight: bold; border: none; border-radius: 12px;
+    cursor: pointer; touch-action: manipulation;
+}
+.btn-start { background: #0a0; color: #fff; }
+.btn-start:active { background: #080; }
+.btn-calibrate { background: #06c; color: #fff; }
+.btn-calibrate:active { background: #048; }
+.btn:disabled { background: #444; color: #888; cursor: default; }
+
+.indicator {
+    position: relative; width: 200px; height: 200px;
+    border: 2px solid #0f0; border-radius: 50%; margin: 1em 0;
+    overflow: hidden;
+}
+.horizon {
+    position: absolute; left: 0; width: 100%; height: 2px;
+    background: #0f0; top: 50%; transform-origin: center center;
+}
+.crosshair-h, .crosshair-v {
+    position: absolute; background: #ff0;
+}
+.crosshair-h { width: 20px; height: 2px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.crosshair-v { width: 2px; height: 20px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+
+.values { font-family: monospace; font-size: 1.1em; margin-top: 0.5em; }
+.values span { display: inline-block; width: 140px; text-align: center; }
+.send-rate { font-family: monospace; font-size: 0.9em; color: #888; margin-top: 0.5em; }
+</style>
+</head>
+<body>
+
+<h1>Hand-Drone Gyro</h1>
+<div id="status" class="status disconnected">Disconnected</div>
+
+<button id="btnStart" class="btn btn-start">Start Gyroscope</button>
+<button id="btnCalibrate" class="btn btn-calibrate" disabled>Calibrate</button>
+
+<div class="indicator">
+    <div id="horizon" class="horizon"></div>
+    <div class="crosshair-h"></div>
+    <div class="crosshair-v"></div>
+</div>
+
+<div class="values">
+    <span id="valRoll">Roll: 0.0</span>
+    <span id="valPitch">Pitch: 0.0</span>
+    <span id="valYaw">Yaw: 0.0</span>
+</div>
+<div id="sendRate" class="send-rate">Send: 0 Hz</div>
+
+<script>
+const WS_PORT = 8765;
+const MIN_SEND_INTERVAL_MS = 8; // ~125Hz cap
+
+let ws = null;
+let gyroActive = false;
+let currentBeta = 0;   // front-back tilt
+let currentGamma = 0;  // left-right tilt
+let currentAlpha = 0;  // compass heading (yaw)
+let lastSendTime = 0;
+let sendCount = 0;
+let sendRateStart = performance.now();
+
+const statusEl = document.getElementById('status');
+const btnStart = document.getElementById('btnStart');
+const btnCalibrate = document.getElementById('btnCalibrate');
+const horizonEl = document.getElementById('horizon');
+const valRoll = document.getElementById('valRoll');
+const valPitch = document.getElementById('valPitch');
+const valYaw = document.getElementById('valYaw');
+const sendRateEl = document.getElementById('sendRate');
+
+// --- iOS requires permission request from user gesture ---
+const needsPermission = typeof DeviceOrientationEvent !== 'undefined'
+    && typeof DeviceOrientationEvent.requestPermission === 'function';
+
+if (!needsPermission) {
+    // Android or desktop: auto-start gyro, hide button
+    btnStart.style.display = 'none';
+    startGyro();
+}
+
+btnStart.addEventListener('click', async () => {
+    if (needsPermission) {
+        try {
+            const perm = await DeviceOrientationEvent.requestPermission();
+            if (perm === 'granted') {
+                startGyro();
+                btnStart.disabled = true;
+                btnStart.textContent = 'Gyroscope Active';
+            } else {
+                statusEl.textContent = 'Permission denied';
+            }
+        } catch (e) {
+            statusEl.textContent = 'Permission error: ' + e.message;
+        }
+    } else {
+        startGyro();
+    }
+});
+
+btnCalibrate.addEventListener('click', () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'calibrate',
+            beta: currentBeta,
+            gamma: currentGamma,
+            alpha: currentAlpha
+        }));
+        statusEl.textContent = 'Calibrated!';
+        setTimeout(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'status connected';
+            }
+        }, 800);
+    }
+});
+
+function startGyro() {
+    gyroActive = true;
+    window.addEventListener('deviceorientation', onOrientation);
+    connectWS();
+}
+
+function onOrientation(e) {
+    if (e.beta !== null) currentBeta = e.beta;
+    if (e.gamma !== null) currentGamma = e.gamma;
+    if (e.alpha !== null) currentAlpha = e.alpha;
+
+    // Update visual indicator
+    const roll = currentGamma;  // left-right
+    const pitch = currentBeta;  // front-back
+    const pitchOffset = Math.max(-1, Math.min(1, -pitch / 45)) * 50;
+    horizonEl.style.top = (50 + pitchOffset) + '%';
+    horizonEl.style.transform = 'rotate(' + roll + 'deg)';
+
+    valRoll.textContent = 'Roll: ' + roll.toFixed(1);
+    valPitch.textContent = 'Pitch: ' + pitch.toFixed(1);
+    valYaw.textContent = 'Yaw: ' + currentAlpha.toFixed(1);
+
+    // Send binary orientation data, throttled
+    const now = performance.now();
+    if (now - lastSendTime < MIN_SEND_INTERVAL_MS) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const buf = new Float32Array([currentBeta, currentGamma, currentAlpha, now]);
+        ws.send(buf.buffer);
+        lastSendTime = now;
+
+        // Track send rate
+        sendCount++;
+        const elapsed = now - sendRateStart;
+        if (elapsed >= 1000) {
+            sendRateEl.textContent = 'Send: ' + Math.round(sendCount * 1000 / elapsed) + ' Hz';
+            sendCount = 0;
+            sendRateStart = now;
+        }
+    }
+}
+
+function connectWS() {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        return;
+    }
+
+    const wsUrl = 'wss://' + location.hostname + ':' + WS_PORT;
+    statusEl.textContent = 'Connecting...';
+    statusEl.className = 'status disconnected';
+
+    try {
+        ws = new WebSocket(wsUrl);
+    } catch (e) {
+        statusEl.textContent = 'Connection failed';
+        scheduleReconnect();
+        return;
+    }
+
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = () => {
+        statusEl.textContent = 'Connected';
+        statusEl.className = 'status connected';
+        btnCalibrate.disabled = false;
+    };
+
+    ws.onclose = () => {
+        statusEl.textContent = 'Disconnected';
+        statusEl.className = 'status disconnected';
+        btnCalibrate.disabled = true;
+        scheduleReconnect();
+    };
+
+    ws.onerror = () => {
+        // onclose will fire after this
+    };
+}
+
+function scheduleReconnect() {
+    setTimeout(() => {
+        if (gyroActive) connectWS();
+    }, 2000);
+}
+</script>
+</body>
+</html>

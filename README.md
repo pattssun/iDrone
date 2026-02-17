@@ -17,7 +17,7 @@ A drone simulator controlled by hand gestures and head movement via your MacBook
 ```bash
 # Create virtual environment (recommended)
 python3 -m venv venvw
-source venv/bin/activatea
+source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt

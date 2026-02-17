@@ -1,32 +1,22 @@
-"""Hand-Drone: Hand-controlled drone simulator. Entry point and main loop."""
+"""Hand-Drone: Phone-controlled drone simulator. Entry point and main loop."""
 
 import sys
 import time
 
-import cv2
-import numpy as np
 import pygame
 from pygame.locals import *
 from OpenGL.GL import *
 
 import config
-from tracker import Tracker, TrackingResult, draw_landmarks
+from tracker import TrackingResult
 from controls import ControlMapper, DroneCommand
 from drone_interface import SimulatorAdapter
 from renderer import Renderer
 from dashboard import Dashboard
+from phone_server import PhoneServer
 
 
 def main():
-    # --- Initialize webcam ---
-    cap = cv2.VideoCapture(config.WEBCAM_INDEX)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.WEBCAM_WIDTH)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.WEBCAM_HEIGHT)
-
-    if not cap.isOpened():
-        print("Error: Could not open webcam.")
-        sys.exit(1)
-
     # --- Initialize Pygame + OpenGL ---
     pygame.init()
     display = pygame.display.set_mode(
@@ -36,15 +26,16 @@ def main():
     pygame.display.set_caption("Hand-Drone Simulator")
 
     # --- Initialize components ---
-    tracker = Tracker()
     control_mapper = ControlMapper()
     drone = SimulatorAdapter()
     renderer = Renderer(config.WINDOW_WIDTH, config.WINDOW_HEIGHT)
     dashboard = Dashboard(config.WINDOW_WIDTH, config.WINDOW_HEIGHT)
+    phone_server = PhoneServer()
 
     renderer.init_gl()
     dashboard.init()
     drone.connect()
+    phone_server.start()
 
     clock = pygame.time.Clock()
     prev_time = time.perf_counter()
@@ -52,21 +43,17 @@ def main():
     running = True
 
     # State
-    webcam_frame = None
     tracking_result = TrackingResult()
     command = DroneCommand()
 
     print("Hand-Drone Simulator")
-    print("  Controls:")
-    print("    Rock sign (index + pinky) = takeoff / hover")
-    print("    Release gesture = land")
-    print("    Hand roll = drone roll")
-    print("    Hand pitch (tilt forward/back) = drone pitch")
-    print("    Head tilt = yaw")
+    print("  Phone gyro:")
+    print(f"    Open on phone: {phone_server.url}")
+    print("    Use phone orientation for roll, pitch, yaw")
     print("  Keys:")
-    print("    ESC = quit")
+    print("    P = print phone URL")
     print("    R = reset drone")
-    print("    C = calibrate neutral hand position")
+    print("    ESC = quit")
 
     while running:
         current_time = time.perf_counter()
@@ -86,30 +73,15 @@ def main():
                     drone.reset()
                     control_mapper.reset()
                     print("Drone reset.")
-                elif event.key == K_c:
-                    ret, frame = cap.read()
-                    if ret:
-                        frame = cv2.flip(frame, 1)
-                        if tracker.calibrate_neutral(frame):
-                            print("Pitch calibrated to current hand position.")
-                        else:
-                            print("Calibration failed — no hand detected.")
+                elif event.key == K_p:
+                    print(f"Phone URL: {phone_server.url}")
             elif event.type == VIDEORESIZE:
                 w, h = event.size
                 renderer.resize(w, h)
                 dashboard.resize(w, h)
 
-        # --- Capture webcam frame ---
-        ret, frame = cap.read()
-        if ret:
-            frame = cv2.flip(frame, 1)  # mirror for natural interaction
-            webcam_frame = frame.copy()
-
-            # --- Run tracking ---
-            tracking_result = tracker.process(frame)
-
-            # Draw landmarks on the webcam frame for thumbnail
-            webcam_frame = draw_landmarks(webcam_frame, tracking_result)
+        # --- Get phone input ---
+        tracking_result = phone_server.get_tracking_result()
 
         # --- Map controls ---
         command = control_mapper.map(tracking_result, dt)
@@ -123,16 +95,15 @@ def main():
         renderer.render(state)
 
         # --- Render HUD overlay ---
-        dashboard.render(state, command, tracking_result, webcam_frame, fps)
+        dashboard.render(state, command, tracking_result, fps)
 
         # --- Swap buffers ---
         pygame.display.flip()
         clock.tick(config.FPS_TARGET)
 
     # --- Cleanup ---
-    tracker.close()
+    phone_server.stop()
     drone.disconnect()
-    cap.release()
     pygame.quit()
     print("Goodbye.")
 

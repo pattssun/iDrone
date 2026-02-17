@@ -5,35 +5,15 @@ WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
 FPS_TARGET = 60
 
-# --- Webcam ---
-WEBCAM_INDEX = 0
-WEBCAM_WIDTH = 640
-WEBCAM_HEIGHT = 480
-WEBCAM_THUMBNAIL_SCALE = 0.3  # fraction of webcam resolution for HUD thumbnail
-
-# --- MediaPipe ---
-MP_HAND_MAX_HANDS = 1
-MP_HAND_DETECTION_CONFIDENCE = 0.7
-MP_HAND_TRACKING_CONFIDENCE = 0.6
-MP_FACE_DETECTION_CONFIDENCE = 0.5
-MP_FACE_TRACKING_CONFIDENCE = 0.5
-
-# --- Gesture detection ---
-# Rock sign: index + pinky extended, middle + ring folded
-# "Extended" means tip landmark is above (lower y) its PIP joint
-# "Folded" means tip landmark is below (higher y) its PIP joint
-GESTURE_HYSTERESIS_FRAMES = 3  # frames of consistent detection before state change
-
 # --- Control mapping ---
-CONTROL_DEADZONE_DEG = 5.0       # angles within ±this are treated as zero
-CONTROL_EMA_ALPHA = 0.3          # exponential moving average smoothing factor
+CONTROL_DEADZONE_DEG = 3.0       # angles within ±this are treated as zero
+CONTROL_EMA_ALPHA = 0.85         # exponential moving average smoothing factor (higher = snappier)
 CONTROL_ROLL_SENSITIVITY = 2.0   # multiplier: angle → rate
-CONTROL_PITCH_SENSITIVITY = 2.0
-CONTROL_YAW_SENSITIVITY = 1.5
 CONTROL_MAX_ROLL_RATE = 45.0     # degrees per second
-CONTROL_MAX_PITCH_RATE = 45.0
-CONTROL_MAX_YAW_RATE = 90.0
-CONTROL_MAX_RATE_CHANGE = 180.0  # max rate change per second (rate limiting)
+CONTROL_PITCH_SENSITIVITY = 2.0  # multiplier: angle → rate
+CONTROL_MAX_PITCH_RATE = 45.0    # degrees per second
+CONTROL_MAX_RATE_CHANGE = 500.0  # max rate change per second (rate limiting)
+CONTROL_MAX_YAW_ANGLE = 45.0    # degrees, clamp range for yaw
 
 # --- Physics ---
 PHYSICS_TIMESTEP = 1.0 / 120.0   # fixed timestep (120 Hz)
@@ -68,5 +48,9 @@ HUD_FONT_SIZE = 16
 HUD_ATTITUDE_RADIUS = 60        # pixels, attitude indicator circle
 HUD_ALTITUDE_BAR_WIDTH = 20     # pixels
 HUD_ALTITUDE_BAR_HEIGHT = 200   # pixels
-HUD_HEADING_TAPE_WIDTH = 300    # pixels
 HUD_MARGIN = 20                 # pixels from screen edges
+
+# --- Phone gyroscope server ---
+PHONE_HTTP_PORT = 8080
+PHONE_WS_PORT = 8765
+PHONE_TIMEOUT_SECONDS = 2.0  # consider disconnected after this
