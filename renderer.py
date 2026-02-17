@@ -21,6 +21,8 @@ class Renderer:
         self._cam_y = config.CHASE_CAM_HEIGHT
         self._cam_z = -config.CHASE_CAM_DISTANCE
 
+        self.obstacles = []
+
     def init_gl(self):
         """Initialize OpenGL state. Call after pygame display is created."""
         glEnable(GL_DEPTH_TEST)
@@ -60,6 +62,9 @@ class Renderer:
 
         # --- Ground shadow ---
         self._draw_shadow(state)
+
+        # --- Obstacles ---
+        self._draw_obstacles()
 
         # --- Drone ---
         self._draw_drone(state)
@@ -280,6 +285,190 @@ class Renderer:
             z = cz + radius * math.sin(angle)
             glVertex3f(x, cy, z)
         glEnd()
+
+    # ---- Obstacle rendering ----
+
+    def _draw_obstacles(self):
+        """Draw all obstacles in the world."""
+        from obstacles import ObstacleType
+        for obs in self.obstacles:
+            if obs.type == ObstacleType.BOX:
+                self._draw_box_obstacle(obs)
+            elif obs.type == ObstacleType.CYLINDER:
+                self._draw_cylinder_obstacle(obs)
+            elif obs.type == ObstacleType.TREE:
+                self._draw_tree_obstacle(obs)
+            elif obs.type == ObstacleType.HOOP:
+                self._draw_hoop_obstacle(obs)
+
+    def _draw_box_obstacle(self, obs):
+        """Draw an axis-aligned box (building) with shaded faces and edges."""
+        hw, hh, hd = obs.width / 2, obs.height, obs.depth / 2
+        x, z = obs.x, obs.z
+
+        v = [
+            (x - hw, 0,  z - hd),   # 0: bottom-left-back
+            (x + hw, 0,  z - hd),   # 1: bottom-right-back
+            (x + hw, 0,  z + hd),   # 2: bottom-right-front
+            (x - hw, 0,  z + hd),   # 3: bottom-left-front
+            (x - hw, hh, z - hd),   # 4: top-left-back
+            (x + hw, hh, z - hd),   # 5: top-right-back
+            (x + hw, hh, z + hd),   # 6: top-right-front
+            (x - hw, hh, z + hd),   # 7: top-left-front
+        ]
+
+        # Side faces with per-face shading for depth
+        faces = [
+            (0, 1, 5, 4, 0.85),  # back (darker)
+            (2, 3, 7, 6, 1.0),   # front (lighter)
+            (0, 3, 7, 4, 0.90),  # left
+            (1, 2, 6, 5, 0.95),  # right
+        ]
+        base = config.OBSTACLE_BUILDING_COLOR
+        for i0, i1, i2, i3, shade in faces:
+            glColor3f(base[0] * shade, base[1] * shade, base[2] * shade)
+            glBegin(GL_QUADS)
+            glVertex3f(*v[i0]); glVertex3f(*v[i1])
+            glVertex3f(*v[i2]); glVertex3f(*v[i3])
+            glEnd()
+
+        # Roof
+        glColor3f(*config.OBSTACLE_BUILDING_ROOF_COLOR)
+        glBegin(GL_QUADS)
+        glVertex3f(*v[4]); glVertex3f(*v[5])
+        glVertex3f(*v[6]); glVertex3f(*v[7])
+        glEnd()
+
+        # Edges
+        glColor4f(*config.OBSTACLE_BUILDING_EDGE_COLOR)
+        glLineWidth(1.0)
+        for ib, it in [(0, 4), (1, 5), (2, 6), (3, 7)]:
+            glBegin(GL_LINES)
+            glVertex3f(*v[ib]); glVertex3f(*v[it])
+            glEnd()
+        glBegin(GL_LINE_LOOP)
+        for i in [4, 5, 6, 7]:
+            glVertex3f(*v[i])
+        glEnd()
+        glBegin(GL_LINE_LOOP)
+        for i in [0, 1, 2, 3]:
+            glVertex3f(*v[i])
+        glEnd()
+        glLineWidth(2.0)
+
+        # Ground shadow
+        glColor4f(0.0, 0.0, 0.0, config.OBSTACLE_SHADOW_ALPHA)
+        glBegin(GL_QUADS)
+        glVertex3f(x - hw, 0.004, z - hd)
+        glVertex3f(x + hw, 0.004, z - hd)
+        glVertex3f(x + hw, 0.004, z + hd)
+        glVertex3f(x - hw, 0.004, z + hd)
+        glEnd()
+
+    def _draw_cylinder_obstacle(self, obs):
+        """Draw a vertical cylinder (pole/tower) with top cap and optional beacon."""
+        segments = 12
+        cx, cz = obs.x, obs.z
+        r, h = obs.radius, obs.height
+        color = config.OBSTACLE_POLE_COLOR
+
+        # Side faces
+        glBegin(GL_QUAD_STRIP)
+        for i in range(segments + 1):
+            angle = 2.0 * math.pi * i / segments
+            nx = math.cos(angle)
+            nz = math.sin(angle)
+            shade = 0.8 + 0.2 * max(0, nz)
+            glColor3f(color[0] * shade, color[1] * shade, color[2] * shade)
+            px = cx + r * nx
+            pz = cz + r * nz
+            glVertex3f(px, h, pz)
+            glVertex3f(px, 0, pz)
+        glEnd()
+
+        # Top cap
+        glColor3f(color[0] * 0.9, color[1] * 0.9, color[2] * 0.9)
+        self._draw_filled_circle(cx, h, cz, r, segments)
+
+        # Red beacon on tall poles
+        if h > 4.0:
+            beacon_r = max(r * 1.5, 0.06)
+            glColor3f(*config.OBSTACLE_POLE_LIGHT_COLOR)
+            self._draw_filled_circle(cx, h + 0.02, cz, beacon_r, 8)
+
+    def _draw_tree_obstacle(self, obs):
+        """Draw tree: brown trunk cylinder + green canopy sphere."""
+        segments = 8
+        cx, cz = obs.x, obs.z
+        tr, th = obs.radius, obs.height
+
+        # Trunk
+        trunk_color = config.OBSTACLE_TREE_TRUNK_COLOR
+        glColor3f(*trunk_color)
+        glBegin(GL_QUAD_STRIP)
+        for i in range(segments + 1):
+            angle = 2.0 * math.pi * i / segments
+            px = cx + tr * math.cos(angle)
+            pz = cz + tr * math.sin(angle)
+            glVertex3f(px, th, pz)
+            glVertex3f(px, 0, pz)
+        glEnd()
+
+        # Canopy sphere (latitude slices)
+        canopy_r = obs.canopy_radius
+        if canopy_r <= 0:
+            return
+        canopy_cy = th + canopy_r * 0.7
+        canopy_color = config.OBSTACLE_TREE_CANOPY_COLOR
+        lat_segs = 8
+        lon_segs = 12
+
+        for j in range(lat_segs):
+            lat0 = math.pi * (j / lat_segs - 0.5)
+            lat1 = math.pi * ((j + 1) / lat_segs - 0.5)
+            y0 = canopy_cy + canopy_r * math.sin(lat0)
+            y1 = canopy_cy + canopy_r * math.sin(lat1)
+            r0 = canopy_r * math.cos(lat0)
+            r1 = canopy_r * math.cos(lat1)
+            shade = 0.7 + 0.3 * (j / lat_segs)
+            glColor3f(canopy_color[0] * shade, canopy_color[1] * shade, canopy_color[2] * shade)
+
+            glBegin(GL_QUAD_STRIP)
+            for i in range(lon_segs + 1):
+                angle = 2.0 * math.pi * i / lon_segs
+                cos_a = math.cos(angle)
+                sin_a = math.sin(angle)
+                glVertex3f(cx + r1 * cos_a, y1, cz + r1 * sin_a)
+                glVertex3f(cx + r0 * cos_a, y0, cz + r0 * sin_a)
+            glEnd()
+
+    def _draw_hoop_obstacle(self, obs):
+        """Draw a ring/hoop (torus) to fly through."""
+        cx, cz = obs.x, obs.z
+        ring_r = obs.radius
+        tube_r = obs.ring_thickness
+        ring_y = obs.height
+        color = config.OBSTACLE_HOOP_COLOR
+
+        ring_segs = 24
+        tube_segs = 8
+
+        for i in range(ring_segs):
+            theta0 = 2.0 * math.pi * i / ring_segs
+            theta1 = 2.0 * math.pi * (i + 1) / ring_segs
+
+            glBegin(GL_QUAD_STRIP)
+            for j in range(tube_segs + 1):
+                phi = 2.0 * math.pi * j / tube_segs
+                for theta in [theta1, theta0]:
+                    r = ring_r + tube_r * math.cos(phi)
+                    px = cx + r * math.cos(theta)
+                    py = ring_y + tube_r * math.sin(phi)
+                    pz = cz + r * math.sin(theta)
+                    shade = 0.7 + 0.3 * math.cos(phi)
+                    glColor3f(color[0] * shade, color[1] * shade, color[2] * shade)
+                    glVertex3f(px, py, pz)
+            glEnd()
 
     def resize(self, width: int, height: int):
         """Handle window resize."""

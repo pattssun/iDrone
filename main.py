@@ -14,6 +14,7 @@ from drone_interface import SimulatorAdapter
 from renderer import Renderer
 from dashboard import Dashboard
 from phone_server import PhoneServer
+from obstacles import create_world
 
 
 def main():
@@ -36,6 +37,11 @@ def main():
     dashboard.init()
     drone.connect()
     phone_server.start()
+
+    # --- Create obstacle world ---
+    world_obstacles = create_world()
+    drone._physics.obstacles = world_obstacles
+    renderer.obstacles = world_obstacles
 
     clock = pygame.time.Clock()
     prev_time = time.perf_counter()

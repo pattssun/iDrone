@@ -33,6 +33,7 @@ class DroneState:
 class DronePhysics:
     def __init__(self):
         self.state = DroneState()
+        self.obstacles = []
 
     def step(self, command: DroneCommand, dt: float):
         """Apply roll and pitch rates, and yaw angle directly."""
@@ -80,6 +81,23 @@ class DronePhysics:
         # Integrate position
         s.x += s.vx * dt
         s.z += s.vz * dt
+
+        # Collision detection
+        if self.obstacles:
+            from obstacles import check_all_collisions
+            result = check_all_collisions(s.x, s.y, s.z,
+                                          config.OBSTACLE_DRONE_RADIUS, self.obstacles)
+            if result.collided:
+                s.x, s.y, s.z = result.new_x, result.new_y, result.new_z
+                v_dot_n = (s.vx * result.normal_x +
+                           s.vy * result.normal_y +
+                           s.vz * result.normal_z)
+                if v_dot_n < 0:
+                    bounce = config.OBSTACLE_BOUNCE_FACTOR
+                    s.vx -= (1 + bounce) * v_dot_n * result.normal_x
+                    s.vy -= (1 + bounce) * v_dot_n * result.normal_y
+                    s.vz -= (1 + bounce) * v_dot_n * result.normal_z
+                s.y = max(s.y, config.THROTTLE_MIN_HEIGHT)
 
     def reset(self):
         self.state = DroneState()
