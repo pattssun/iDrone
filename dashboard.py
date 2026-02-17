@@ -1,4 +1,4 @@
-"""HUD overlay: attitude indicator (roll + pitch), altitude bar, control bars, webcam thumbnail."""
+"""HUD overlay: DJI Fly-style card-based telemetry instruments."""
 
 import math
 
@@ -17,12 +17,16 @@ class Dashboard:
     def __init__(self, width: int, height: int):
         self.width = width
         self.height = height
-        self._font = None
+        self._font_large = None
+        self._font_medium = None
+        self._font_small = None
 
     def init(self):
         """Initialize after pygame + OpenGL context exists."""
         pygame.font.init()
-        self._font = pygame.font.SysFont("monospace", config.HUD_FONT_SIZE)
+        self._font_large = pygame.font.SysFont("Helvetica", config.HUD_FONT_LARGE)
+        self._font_medium = pygame.font.SysFont("Helvetica", config.HUD_FONT_MEDIUM)
+        self._font_small = pygame.font.SysFont("Helvetica", config.HUD_FONT_SMALL)
 
     def render(self, state: DroneState, command: DroneCommand, tracking: TrackingResult,
                fps: float):
@@ -31,32 +35,312 @@ class Dashboard:
 
         margin = config.HUD_MARGIN
 
-        # Attitude indicator (center-left) — roll + pitch
-        att_x = margin + config.HUD_ATTITUDE_RADIUS + 10
-        att_y = self.height // 2
-        self._draw_attitude_indicator(att_x, att_y, state.roll, state.pitch)
+        # --- Compass heading bar (top center) ---
+        compass_w = int(self.width * config.HUD_COMPASS_WIDTH_FRAC)
+        compass_x = (self.width - compass_w) // 2
+        compass_y = self.height - margin - config.HUD_COMPASS_HEIGHT - 10
+        self._draw_compass(compass_x, compass_y, compass_w, config.HUD_COMPASS_HEIGHT, state.yaw)
 
-        # Altitude bar (right side)
-        alt_x = self.width - margin - config.HUD_ALTITUDE_BAR_WIDTH - 10
-        alt_y = self.height // 2
-        self._draw_altitude_bar(alt_x, alt_y, state.y)
+        # --- Telemetry strip: Alt | V.Speed | H.Speed | THR (below compass) ---
+        tel_w = compass_w
+        tel_h = 46
+        tel_x = compass_x
+        tel_y = compass_y - tel_h - 4
+        h_speed = math.sqrt(state.vx ** 2 + state.vz ** 2)
+        thr_pct = command.throttle * 100
+        self._draw_telemetry_strip(tel_x, tel_y, tel_w, tel_h,
+                                   state.y, state.vy, h_speed, thr_pct)
 
-        # Control input (bottom left) — roll + pitch bar graphs
-        bar_y = margin + 20
-        self._draw_control_bars(margin + 10, bar_y, tracking, command)
+        # --- Attitude indicator (left side, center) ---
+        att_r = config.HUD_ATTITUDE_RADIUS_NEW
+        att_cx = margin + att_r + 10
+        att_cy = self.height // 2
+        self._draw_attitude_indicator(att_cx, att_cy, att_r, state.roll, state.pitch)
 
-        # Status (top left)
-        status_y = self.height - margin - 50
-        conn_color = (0, 255, 0) if tracking.gesture_active else (255, 60, 60)
-        conn_text = "PHONE: CONNECTED" if tracking.gesture_active else "PHONE: WAITING"
-        self._draw_text(conn_text, margin + 10, status_y, conn_color)
+        # --- Connection status (top-left) ---
+        connected = tracking.gesture_active
+        dot_color = config.THEME_STATUS_GREEN if connected else config.THEME_STATUS_RED
+        dot_y = self.height - margin - 12
+        self._draw_filled_circle_2d(margin + 12, dot_y, config.HUD_STATUS_DOT_RADIUS, 12, dot_color)
+        label = "Connected" if connected else "Disconnected"
+        self._draw_text(label, margin + 22, dot_y - 7, config.THEME_TEXT_SECONDARY, self._font_small)
 
-        # FPS (top right)
-        self._draw_text(f"FPS: {fps:.0f}", self.width - margin - 80, status_y, (180, 180, 180))
-        self._draw_text(f"CONF: {tracking.confidence:.0%}", self.width - margin - 100, status_y - 20,
-                        (180, 180, 180))
+        # --- FPS (top-right) ---
+        self._draw_text(f"{fps:.0f} FPS", self.width - margin - 55, self.height - margin - 12,
+                        config.THEME_TEXT_SECONDARY, self._font_small)
 
         self._end_2d()
+
+    # ---- Helpers ----
+
+    def _draw_card(self, x, y, w, h):
+        """Semi-transparent filled card with 1px border."""
+        # Fill
+        glColor4f(*config.THEME_CARD_BG)
+        glBegin(GL_QUADS)
+        glVertex2f(x, y)
+        glVertex2f(x + w, y)
+        glVertex2f(x + w, y + h)
+        glVertex2f(x, y + h)
+        glEnd()
+        # Border
+        glColor4f(*config.THEME_CARD_BORDER)
+        glLineWidth(1.0)
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(x, y)
+        glVertex2f(x + w, y)
+        glVertex2f(x + w, y + h)
+        glVertex2f(x, y + h)
+        glEnd()
+
+    def _draw_filled_circle_2d(self, cx, cy, radius, segments, color):
+        """Filled circle in 2D."""
+        glColor3f(*color)
+        glBegin(GL_TRIANGLE_FAN)
+        glVertex2f(cx, cy)
+        for i in range(segments + 1):
+            angle = 2.0 * math.pi * i / segments
+            glVertex2f(cx + radius * math.cos(angle), cy + radius * math.sin(angle))
+        glEnd()
+
+    def _draw_text(self, text, x, y, color=(255, 255, 255), font=None, center=False):
+        """Render text using pygame font onto OpenGL quad."""
+        if font is None:
+            font = self._font_medium
+        if not font:
+            return
+
+        # Normalize color to 0-255 int tuples
+        if isinstance(color[0], float) and color[0] <= 1.0:
+            draw_color = tuple(int(c * 255) for c in color[:3])
+        else:
+            draw_color = color[:3]
+
+        surface = font.render(text, True, draw_color)
+        text_data = pygame.image.tostring(surface, "RGBA", True)
+        w, h = surface.get_size()
+
+        draw_x = x - w // 2 if center else x
+
+        tex = glGenTextures(1)
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, tex)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, text_data)
+
+        glColor4f(1, 1, 1, 1)
+        glBegin(GL_QUADS)
+        glTexCoord2f(0, 0); glVertex2f(draw_x, y)
+        glTexCoord2f(1, 0); glVertex2f(draw_x + w, y)
+        glTexCoord2f(1, 1); glVertex2f(draw_x + w, y + h)
+        glTexCoord2f(0, 1); glVertex2f(draw_x, y + h)
+        glEnd()
+
+        glDisable(GL_TEXTURE_2D)
+        glDeleteTextures([tex])
+
+    # ---- Instrument components ----
+
+    def _draw_compass(self, x, y, w, h, heading_deg):
+        """Compass heading bar with tick marks and cardinal labels."""
+        self._draw_card(x, y, w, h)
+
+        # Visible range: heading +/- 45 degrees
+        cx = x + w / 2
+        cy = y + h / 2
+        deg_range = 90.0  # total visible degrees
+        px_per_deg = w / deg_range
+
+        # Normalize heading to 0-360
+        hdg = heading_deg % 360
+        if hdg < 0:
+            hdg += 360
+
+        # Draw ticks and labels
+        cardinals = {0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW'}
+        for deg_offset in range(-50, 51):
+            world_deg = (round(hdg) + deg_offset) % 360
+            if world_deg % 10 != 0:
+                continue
+            px_x = cx + deg_offset * px_per_deg
+            if px_x < x or px_x > x + w:
+                continue
+
+            # Tick mark
+            if world_deg % 90 == 0:
+                tick_h = h * 0.5
+                glColor4f(0.9, 0.9, 0.9, 0.9)
+            elif world_deg % 45 == 0:
+                tick_h = h * 0.35
+                glColor4f(0.7, 0.7, 0.7, 0.7)
+            else:
+                tick_h = h * 0.2
+                glColor4f(0.5, 0.5, 0.5, 0.5)
+
+            glLineWidth(1.0)
+            glBegin(GL_LINES)
+            glVertex2f(px_x, y)
+            glVertex2f(px_x, y + tick_h)
+            glEnd()
+
+            # Cardinal/intercardinal labels
+            if world_deg in cardinals:
+                self._draw_text(cardinals[world_deg], px_x, y + tick_h + 1,
+                                config.THEME_TEXT_PRIMARY, self._font_small, center=True)
+
+        # Center pointer triangle (top of bar)
+        ptr_size = 5
+        glColor4f(*config.THEME_STATUS_BLUE, 1.0)
+        glBegin(GL_TRIANGLES)
+        glVertex2f(cx, y + h)
+        glVertex2f(cx - ptr_size, y + h + ptr_size)
+        glVertex2f(cx + ptr_size, y + h + ptr_size)
+        glEnd()
+
+        # Heading value at center top
+        self._draw_text(f"{hdg:.0f}\u00b0", cx, y + h + 6, config.THEME_TEXT_ACCENT, self._font_small, center=True)
+
+    def _draw_telemetry_strip(self, x, y, w, h, altitude, vert_speed, h_speed, thr_pct):
+        """4-column telemetry strip: Alt | V.Speed | H.Speed | THR."""
+        self._draw_card(x, y, w, h)
+
+        col_w = w / 4
+        label_y = y + h - 16  # label near top of card
+        value_y = y + 8       # value near bottom of card
+
+        # Column dividers
+        glColor4f(1.0, 1.0, 1.0, 0.04)
+        glLineWidth(1.0)
+        for i in range(1, 4):
+            dx = x + col_w * i
+            glBegin(GL_LINES)
+            glVertex2f(dx, y + 6)
+            glVertex2f(dx, y + h - 6)
+            glEnd()
+
+        # Col 1: Alt
+        c1 = x + col_w * 0.5
+        self._draw_text("Alt", c1, label_y, config.THEME_TEXT_SECONDARY, self._font_small, center=True)
+        self._draw_text(f"{altitude:.1f}", c1, value_y, config.THEME_TEXT_ACCENT, self._font_medium, center=True)
+
+        # Col 2: V.Speed
+        c2 = x + col_w * 1.5
+        self._draw_text("V.Speed", c2, label_y, config.THEME_TEXT_SECONDARY, self._font_small, center=True)
+        if abs(vert_speed) > 0.05:
+            vs_color = config.THEME_STATUS_BLUE if vert_speed > 0 else config.THEME_STATUS_ORANGE
+            sign = "+" if vert_speed > 0 else ""
+            self._draw_text(f"{sign}{vert_speed:.1f}", c2, value_y, vs_color, self._font_medium, center=True)
+        else:
+            self._draw_text("0.0", c2, value_y, config.THEME_TEXT_PRIMARY, self._font_medium, center=True)
+
+        # Col 3: H.Speed
+        c3 = x + col_w * 2.5
+        self._draw_text("H.Speed", c3, label_y, config.THEME_TEXT_SECONDARY, self._font_small, center=True)
+        self._draw_text(f"{h_speed:.1f}", c3, value_y, config.THEME_TEXT_PRIMARY, self._font_medium, center=True)
+
+        # Col 4: THR
+        c4 = x + col_w * 3.5
+        self._draw_text("THR", c4, label_y, config.THEME_TEXT_SECONDARY, self._font_small, center=True)
+        # Color-code throttle: blue above 50%, orange below 50%, white at ~50%
+        if thr_pct > 55:
+            thr_color = config.THEME_STATUS_BLUE
+        elif thr_pct < 45:
+            thr_color = config.THEME_STATUS_ORANGE
+        else:
+            thr_color = config.THEME_TEXT_PRIMARY
+        self._draw_text(f"{thr_pct:.0f}%", c4, value_y, thr_color, self._font_medium, center=True)
+
+    def _draw_attitude_indicator(self, cx, cy, r, roll_deg, pitch_deg):
+        """Small attitude indicator with sky/ground halves."""
+        roll_rad = math.radians(-roll_deg)
+        pitch_offset = -pitch_deg / 45.0 * r
+
+        cos_r = math.cos(roll_rad)
+        sin_r = math.sin(roll_rad)
+
+        # Clipping: draw within circle by using stencil-like approach with many segments
+        segments = 48
+
+        # Sky half (upper) — blue (matches phone gradient midpoint)
+        sky_color = (0.31, 0.50, 0.70)
+        self._draw_half_circle(cx, cy, r, roll_rad, pitch_offset, upper=True, color=sky_color, segments=segments)
+
+        # Ground half (lower) — brown (matches phone gradient midpoint)
+        ground_color = (0.39, 0.30, 0.07)
+        self._draw_half_circle(cx, cy, r, roll_rad, pitch_offset, upper=False, color=ground_color, segments=segments)
+
+        # Horizon line
+        offset_x = -pitch_offset * sin_r
+        offset_y = pitch_offset * cos_r
+        lx1 = cx + (-r * cos_r) + offset_x
+        ly1 = cy + (-r * sin_r) + offset_y
+        lx2 = cx + (r * cos_r) + offset_x
+        ly2 = cy + (r * sin_r) + offset_y
+
+        glColor4f(1.0, 1.0, 1.0, 0.9)
+        glLineWidth(2.0)
+        glBegin(GL_LINES)
+        glVertex2f(lx1, ly1)
+        glVertex2f(lx2, ly2)
+        glEnd()
+
+        # Center crosshair — white (matches phone 20px span)
+        glColor4f(1.0, 1.0, 1.0, 0.85)
+        ch = 10
+        glLineWidth(2.0)
+        glBegin(GL_LINES)
+        glVertex2f(cx - ch, cy)
+        glVertex2f(cx + ch, cy)
+        glVertex2f(cx, cy - ch)
+        glVertex2f(cx, cy + ch)
+        glEnd()
+
+        # Outer ring — subtle white (matches phone box-shadow)
+        glColor4f(1.0, 1.0, 1.0, 0.12)
+        glLineWidth(1.5)
+        glBegin(GL_LINE_LOOP)
+        for i in range(segments):
+            angle = 2.0 * math.pi * i / segments
+            glVertex2f(cx + r * math.cos(angle), cy + r * math.sin(angle))
+        glEnd()
+
+    def _draw_half_circle(self, cx, cy, r, roll_rad, pitch_offset, upper, color, segments=48):
+        """Draw either the sky (upper) or ground (lower) half of the attitude circle."""
+        cos_r = math.cos(roll_rad)
+        sin_r = math.sin(roll_rad)
+        offset_x = -pitch_offset * sin_r
+        offset_y = pitch_offset * cos_r
+
+        # Horizon line center
+        hcx = cx + offset_x
+        hcy = cy + offset_y
+
+        # Normal pointing "up" from the horizon line (perpendicular, into sky)
+        nx = -sin_r
+        ny = cos_r
+
+        glColor3f(*color)
+        glBegin(GL_TRIANGLE_FAN)
+        glVertex2f(hcx, hcy)
+
+        for i in range(segments + 1):
+            angle = 2.0 * math.pi * i / segments
+            px = cx + r * math.cos(angle)
+            py = cy + r * math.sin(angle)
+
+            # Determine which side of the horizon this point is on
+            dx = px - hcx
+            dy = py - hcy
+            dot = dx * nx + dy * ny
+
+            if upper and dot >= 0:
+                glVertex2f(px, py)
+            elif not upper and dot <= 0:
+                glVertex2f(px, py)
+        glEnd()
+
+    # ---- 2D projection ----
 
     def _begin_2d(self):
         """Switch to 2D orthographic projection for overlay."""
@@ -77,215 +361,6 @@ class Dashboard:
         glMatrixMode(GL_PROJECTION)
         glPopMatrix()
         glMatrixMode(GL_MODELVIEW)
-
-    def _draw_attitude_indicator(self, cx, cy, roll_deg, pitch_deg=0.0):
-        """Artificial horizon circle showing roll and pitch."""
-        r = config.HUD_ATTITUDE_RADIUS
-
-        # Outer circle
-        self._draw_circle_outline(cx, cy, r, (0, 255, 0, 180), 48)
-
-        # Pitch offset: move horizon line up/down within the circle
-        # Negative pitch (forward) moves horizon up, positive (back) moves it down
-        pitch_offset = -pitch_deg / 45.0 * r
-
-        # Horizon line (rotated by roll, offset by pitch)
-        roll_rad = math.radians(roll_deg)
-
-        cos_r = math.cos(roll_rad)
-        sin_r = math.sin(roll_rad)
-
-        # Horizon line endpoints with pitch offset perpendicular to roll
-        offset_x = -pitch_offset * sin_r
-        offset_y = pitch_offset * cos_r
-
-        lx1 = cx + (-r * cos_r) + offset_x
-        ly1 = cy + (-r * sin_r) + offset_y
-        lx2 = cx + (r * cos_r) + offset_x
-        ly2 = cy + (r * sin_r) + offset_y
-
-        glColor4f(0.0, 0.8, 0.0, 0.9)
-        glLineWidth(2.0)
-        glBegin(GL_LINES)
-        glVertex2f(lx1, ly1)
-        glVertex2f(lx2, ly2)
-        glEnd()
-
-        # Center crosshair
-        glColor4f(1.0, 1.0, 0.0, 0.9)
-        ch = 8
-        glBegin(GL_LINES)
-        glVertex2f(cx - ch, cy)
-        glVertex2f(cx + ch, cy)
-        glVertex2f(cx, cy - ch)
-        glVertex2f(cx, cy + ch)
-        glEnd()
-
-        # Roll indicator (triangle at top of circle)
-        tri_size = 8
-        top_x = cx - r * math.sin(roll_rad)
-        top_y = cy + r * math.cos(roll_rad)
-        glColor4f(1.0, 0.5, 0.0, 0.9)
-        glBegin(GL_TRIANGLES)
-        glVertex2f(top_x, top_y)
-        glVertex2f(top_x - tri_size * cos_r, top_y - tri_size * sin_r)
-        glVertex2f(top_x + tri_size * cos_r, top_y + tri_size * sin_r)
-        glEnd()
-
-        # Labels
-        self._draw_text(f"R:{roll_deg:+.0f}", cx - r - 30, cy + r + 5, (0, 200, 0))
-        self._draw_text(f"P:{pitch_deg:+.0f}", cx - r - 30, cy + r + 22, (0, 200, 0))
-
-    def _draw_altitude_bar(self, x, cy, altitude):
-        """Vertical altitude gauge on right side."""
-        bar_w = config.HUD_ALTITUDE_BAR_WIDTH
-        bar_h = config.HUD_ALTITUDE_BAR_HEIGHT
-
-        # Background
-        glColor4f(0.0, 0.0, 0.0, 0.3)
-        glBegin(GL_QUADS)
-        glVertex2f(x, cy - bar_h // 2)
-        glVertex2f(x + bar_w, cy - bar_h // 2)
-        glVertex2f(x + bar_w, cy + bar_h // 2)
-        glVertex2f(x, cy + bar_h // 2)
-        glEnd()
-
-        # Fill based on altitude (max display 10m)
-        max_alt = 10.0
-        fill_frac = min(altitude / max_alt, 1.0)
-        fill_h = fill_frac * bar_h
-
-        # Color gradient: green (low) → yellow → red (high)
-        if fill_frac < 0.5:
-            r, g = fill_frac * 2, 1.0
-        else:
-            r, g = 1.0, 1.0 - (fill_frac - 0.5) * 2
-
-        glColor4f(r, g, 0.2, 0.7)
-        glBegin(GL_QUADS)
-        glVertex2f(x + 2, cy - bar_h // 2 + 2)
-        glVertex2f(x + bar_w - 2, cy - bar_h // 2 + 2)
-        glVertex2f(x + bar_w - 2, cy - bar_h // 2 + 2 + fill_h)
-        glVertex2f(x + 2, cy - bar_h // 2 + 2 + fill_h)
-        glEnd()
-
-        # Altitude text
-        self._draw_text(f"ALT", x - 5, cy + bar_h // 2 + 5, (200, 200, 200))
-        self._draw_text(f"{altitude:.1f}m", x - 10, cy + bar_h // 2 - 15, (255, 255, 100))
-
-        # Target altitude marker
-        target_frac = min(config.ALTITUDE_HOLD_TARGET / max_alt, 1.0)
-        target_y = cy - bar_h // 2 + 2 + target_frac * bar_h
-        glColor4f(0.0, 1.0, 1.0, 0.8)
-        glBegin(GL_LINES)
-        glVertex2f(x - 5, target_y)
-        glVertex2f(x + bar_w + 5, target_y)
-        glEnd()
-
-    def _draw_control_bars(self, x, y, tracking: TrackingResult, command: DroneCommand):
-        """Show roll and pitch control inputs as bar graphs."""
-        bar_width = 80
-        bar_height = 8
-
-        # Roll bar
-        by = y
-
-        self._draw_text("ROLL", x, by + bar_height + 2, (180, 180, 180))
-
-        bx = x + 50
-        self._draw_hbar(bx, by, bar_width, bar_height, tracking.roll_angle / 45.0, (100, 200, 100))
-
-        bx2 = bx + bar_width + 10
-        self._draw_hbar(bx2, by, bar_width, bar_height,
-                        command.roll_rate / config.CONTROL_MAX_ROLL_RATE if config.CONTROL_MAX_ROLL_RATE else 0,
-                        (100, 100, 255))
-
-        # Pitch bar (below roll)
-        by2 = y - bar_height - 10
-
-        self._draw_text("PTCH", x, by2 + bar_height + 2, (180, 180, 180))
-
-        self._draw_hbar(bx, by2, bar_width, bar_height, tracking.pitch_angle / 45.0, (100, 200, 100))
-
-        self._draw_hbar(bx2, by2, bar_width, bar_height,
-                        command.pitch_rate / config.CONTROL_MAX_PITCH_RATE if config.CONTROL_MAX_PITCH_RATE else 0,
-                        (100, 100, 255))
-
-    def _draw_hbar(self, x, y, w, h, frac, color):
-        """Draw a horizontal bar centered on zero."""
-        frac = max(-1.0, min(1.0, frac))
-
-        # Background
-        glColor4f(0.2, 0.2, 0.2, 0.5)
-        glBegin(GL_QUADS)
-        glVertex2f(x, y)
-        glVertex2f(x + w, y)
-        glVertex2f(x + w, y + h)
-        glVertex2f(x, y + h)
-        glEnd()
-
-        # Fill from center
-        center_x = x + w / 2
-        fill_w = frac * w / 2
-        glColor4f(color[0] / 255, color[1] / 255, color[2] / 255, 0.8)
-        glBegin(GL_QUADS)
-        if frac >= 0:
-            glVertex2f(center_x, y + 1)
-            glVertex2f(center_x + fill_w, y + 1)
-            glVertex2f(center_x + fill_w, y + h - 1)
-            glVertex2f(center_x, y + h - 1)
-        else:
-            glVertex2f(center_x + fill_w, y + 1)
-            glVertex2f(center_x, y + 1)
-            glVertex2f(center_x, y + h - 1)
-            glVertex2f(center_x + fill_w, y + h - 1)
-        glEnd()
-
-        # Center line
-        glColor4f(0.8, 0.8, 0.8, 0.6)
-        glBegin(GL_LINES)
-        glVertex2f(center_x, y)
-        glVertex2f(center_x, y + h)
-        glEnd()
-
-    def _draw_circle_outline(self, cx, cy, radius, color, segments):
-        """Draw circle outline in 2D."""
-        glColor4f(color[0] / 255, color[1] / 255, color[2] / 255, color[3] / 255 if len(color) > 3 else 1.0)
-        glBegin(GL_LINE_LOOP)
-        for i in range(segments):
-            angle = 2.0 * math.pi * i / segments
-            x = cx + radius * math.cos(angle)
-            y = cy + radius * math.sin(angle)
-            glVertex2f(x, y)
-        glEnd()
-
-    def _draw_text(self, text, x, y, color=(255, 255, 255)):
-        """Render text using pygame font onto OpenGL quad."""
-        if not self._font:
-            return
-
-        surface = self._font.render(text, True, color)
-        text_data = pygame.image.tostring(surface, "RGBA", True)
-        w, h = surface.get_size()
-
-        # Create temporary texture
-        tex = glGenTextures(1)
-        glEnable(GL_TEXTURE_2D)
-        glBindTexture(GL_TEXTURE_2D, tex)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, text_data)
-
-        glColor4f(1, 1, 1, 1)
-        glBegin(GL_QUADS)
-        glTexCoord2f(0, 0); glVertex2f(x, y)
-        glTexCoord2f(1, 0); glVertex2f(x + w, y)
-        glTexCoord2f(1, 1); glVertex2f(x + w, y + h)
-        glTexCoord2f(0, 1); glVertex2f(x, y + h)
-        glEnd()
-
-        glDisable(GL_TEXTURE_2D)
-        glDeleteTextures([tex])
 
     def resize(self, width, height):
         self.width = width

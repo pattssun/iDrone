@@ -1,4 +1,4 @@
-"""Configuration constants for Hand-Drone simulator."""
+"""Configuration constants for iDrone simulator."""
 
 # --- Display ---
 WINDOW_WIDTH = 1280
@@ -25,6 +25,8 @@ MOTOR_RESPONSE_TIME = 0.1        # seconds (first-order lag)
 MAX_TILT_ANGLE = 45.0            # degrees, clamp roll/pitch
 MOVE_MAX_SPEED = 8.0             # m/s at full tilt (45°)
 MOVE_DRAG = 5.0                  # velocity smoothing (higher = snappier)
+THROTTLE_MAX_SPEED = 4.0         # m/s vertical at full throttle deflection
+THROTTLE_MIN_HEIGHT = 0.1        # meters, ground clamp
 
 # --- Altitude hold PID ---
 ALTITUDE_HOLD_TARGET = 2.0       # meters
@@ -57,3 +59,51 @@ HUD_MARGIN = 20                 # pixels from screen edges
 PHONE_HTTP_PORT = 8080
 PHONE_WS_PORT = 8765
 PHONE_TIMEOUT_SECONDS = 2.0  # consider disconnected after this
+
+# =============================================
+# DJI Fly-Style Theme
+# =============================================
+
+# --- Color palette (pygame 0-255 tuples) ---
+THEME_BG = (28, 28, 30)                       # #1c1c1e
+THEME_TEXT_PRIMARY = (230, 230, 230)
+THEME_TEXT_SECONDARY = (140, 140, 145)
+THEME_TEXT_ACCENT = (0, 200, 255)
+
+# --- Color palette (OpenGL 0-1 floats) ---
+THEME_CARD_BG = (0.15, 0.15, 0.17, 0.75)
+THEME_CARD_BORDER = (0.25, 0.25, 0.28, 0.6)
+THEME_STATUS_GREEN = (0.18, 0.82, 0.35)
+THEME_STATUS_RED = (1.0, 0.27, 0.23)
+THEME_STATUS_ORANGE = (1.0, 0.62, 0.04)
+THEME_STATUS_BLUE = (0.04, 0.52, 1.0)
+
+# --- Sky gradient (3-band, OpenGL 0-1 floats) ---
+SKY_TOP_COLOR = (0.38, 0.55, 0.78)
+SKY_MID_COLOR = (0.62, 0.74, 0.88)
+SKY_BOTTOM_COLOR = (0.78, 0.82, 0.87)
+
+# --- Ground surface ---
+GROUND_COLOR = (0.18, 0.20, 0.18)
+GROUND_GRID_COLOR = (0.30, 0.32, 0.30, 0.35)
+GROUND_GRID_ACCENT = (0.40, 0.42, 0.38, 0.5)
+
+# --- Drone model ---
+DRONE_BODY_COLOR = (0.25, 0.25, 0.28)
+DRONE_ARM_WIDTH = 0.03                         # meters, half-width of arm quads
+DRONE_PROP_DISC_ALPHA = 0.18
+DRONE_SHADOW_RADIUS = 0.35                     # meters
+DRONE_SHADOW_ALPHA = 0.22
+
+# --- HUD layout (DJI-style) ---
+HUD_FONT_LARGE = 28
+HUD_FONT_MEDIUM = 18
+HUD_FONT_SMALL = 14
+HUD_ATTITUDE_RADIUS_NEW = 45                   # pixels
+HUD_COMPASS_HEIGHT = 28                        # pixels tall
+HUD_COMPASS_WIDTH_FRAC = 0.35                  # fraction of screen width
+HUD_ALT_CARD_W = 180
+HUD_ALT_CARD_H = 70
+HUD_SPEED_CARD_W = 120
+HUD_SPEED_CARD_H = 50
+HUD_STATUS_DOT_RADIUS = 5

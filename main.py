@@ -1,4 +1,4 @@
-"""Hand-Drone: Phone-controlled drone simulator. Entry point and main loop."""
+"""iDrone: Phone-controlled drone simulator. Entry point and main loop."""
 
 import sys
 import time
@@ -23,7 +23,7 @@ def main():
         (config.WINDOW_WIDTH, config.WINDOW_HEIGHT),
         DOUBLEBUF | OPENGL | RESIZABLE,
     )
-    pygame.display.set_caption("Hand-Drone Simulator")
+    pygame.display.set_caption("iDrone")
 
     # --- Initialize components ---
     control_mapper = ControlMapper()
@@ -46,7 +46,7 @@ def main():
     tracking_result = TrackingResult()
     command = DroneCommand()
 
-    print("Hand-Drone Simulator")
+    print("iDrone Simulator")
     print("  Phone gyro:")
     print(f"    Open on phone: {phone_server.url}")
     print("    Use phone orientation for roll, pitch, yaw")
@@ -92,6 +92,7 @@ def main():
 
         # --- Render 3D scene ---
         state = drone.get_state()
+        phone_server.update_drone_state(state)
         renderer.render(state)
 
         # --- Render HUD overlay ---

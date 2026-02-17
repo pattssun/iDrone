@@ -70,7 +70,14 @@ class DronePhysics:
         s.vx += (target_vx - s.vx) * blend
         s.vz += (target_vz - s.vz) * blend
 
-        # Integrate position (altitude unchanged)
+        # --- Altitude from throttle ---
+        # throttle 0.5 = hover, >0.5 = climb, <0.5 = descend
+        target_vy = (command.throttle - 0.5) * 2.0 * config.THROTTLE_MAX_SPEED
+        s.vy += (target_vy - s.vy) * blend
+        s.y += s.vy * dt
+        s.y = max(s.y, config.THROTTLE_MIN_HEIGHT)
+
+        # Integrate position
         s.x += s.vx * dt
         s.z += s.vz * dt
 

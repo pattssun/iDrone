@@ -1,6 +1,6 @@
-# Hand-Drone: Hand-Controlled Drone Simulator
+# iDrone: Phone-Controlled Drone Simulator
 
-A drone simulator controlled by hand gestures and head movement via your MacBook webcam. Uses MediaPipe for real-time hand and face tracking.
+A drone simulator controlled by phone gyroscope. Tilt your phone to fly.
 
 ## Control Scheme
 

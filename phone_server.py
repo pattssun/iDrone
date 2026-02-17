@@ -24,7 +24,7 @@ _PHONE_HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "phone.ht
 
 
 class PhoneState:
-    """Thread-safe container for latest phone orientation."""
+    """Thread-safe container for latest phone orientation and drone telemetry."""
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -34,9 +34,14 @@ class PhoneState:
         self.roll = 0.0   # gamma after calibration
         self.pitch = 0.0  # beta after calibration
         self.yaw = 0.0    # alpha after calibration (compass heading offset)
+        self.throttle = 0.5  # 0.0–1.0, 0.5 = hover
         self._cal_beta = 0.0
         self._cal_gamma = 0.0
         self._cal_alpha = 0.0
+        # Drone telemetry (set by main loop, sent back to phone)
+        self.drone_alt = 0.0
+        self.drone_vs = 0.0
+        self.drone_hs = 0.0
 
     def calibrate(self, beta: float, gamma: float, alpha: float = 0.0):
         with self._lock:
@@ -55,13 +60,32 @@ class PhoneState:
             self.phone_timestamp = phone_timestamp
             self.connected = True
 
+    def set_throttle(self, value: float):
+        with self._lock:
+            self.throttle = max(0.0, min(1.0, value))
+
+    def set_drone_telemetry(self, alt: float, vs: float, hs: float):
+        with self._lock:
+            self.drone_alt = alt
+            self.drone_vs = vs
+            self.drone_hs = hs
+
+    def get_telemetry_json(self) -> str:
+        with self._lock:
+            return json.dumps({
+                "type": "telemetry",
+                "alt": round(self.drone_alt, 1),
+                "vs": round(self.drone_vs, 1),
+                "hs": round(self.drone_hs, 1),
+            })
+
     def get(self) -> tuple:
-        """Returns (roll, pitch, yaw, connected)."""
+        """Returns (roll, pitch, yaw, throttle, connected)."""
         with self._lock:
             connected = self.connected and (time.time() - self.last_update < config.PHONE_TIMEOUT_SECONDS)
             if not connected:
                 self.connected = False
-            return self.roll, self.pitch, self.yaw, connected
+            return self.roll, self.pitch, self.yaw, self.throttle, connected
 
 
 class PhoneServer:
@@ -77,10 +101,11 @@ class PhoneServer:
         self._ws_thread = None
         self._ws_loop = None
         self._ws_server = None
+        self._clients = set()
 
     @property
     def is_connected(self) -> bool:
-        _, _, _, connected = self.state.get()
+        _, _, _, _, connected = self.state.get()
         return connected
 
     @property
@@ -88,14 +113,21 @@ class PhoneServer:
         return f"https://{self.local_ip}:{self.http_port}/"
 
     def get_tracking_result(self) -> TrackingResult:
-        roll, pitch, yaw, connected = self.state.get()
+        roll, pitch, yaw, throttle, connected = self.state.get()
         return TrackingResult(
             gesture_active=connected,
             roll_angle=roll,
             pitch_angle=pitch,
             yaw_angle=yaw,
+            throttle=throttle,
             confidence=1.0 if connected else 0.0,
         )
+
+    def update_drone_state(self, state):
+        """Feed drone state for telemetry back to phone. Called from main loop."""
+        import math
+        hs = math.sqrt(state.vx ** 2 + state.vz ** 2)
+        self.state.set_drone_telemetry(state.y, state.vy, hs)
 
     def start(self):
         """Generate cert if needed, start HTTP and WebSocket servers."""
@@ -168,25 +200,47 @@ class PhoneServer:
         self._ws_thread.start()
 
     async def _ws_handler(self, websocket):
+        self._clients.add(websocket)
         try:
-            async for message in websocket:
-                if isinstance(message, bytes):
-                    # Binary: 4 floats [beta, gamma, alpha, timestamp]
-                    if len(message) == 16:
-                        beta, gamma, alpha, timestamp = struct.unpack('<4f', message)
-                        self.state.update(beta, gamma, alpha, phone_timestamp=timestamp)
-                elif isinstance(message, str):
-                    # JSON: calibrate messages
-                    try:
-                        data = json.loads(message)
-                    except json.JSONDecodeError:
-                        continue
-                    if data.get("type") == "calibrate":
-                        beta = float(data.get("beta", 0))
-                        gamma = float(data.get("gamma", 0))
-                        alpha = float(data.get("alpha", 0))
-                        self.state.calibrate(beta, gamma, alpha)
+            # Start telemetry sender task
+            sender = asyncio.ensure_future(self._telemetry_sender(websocket))
+            try:
+                async for message in websocket:
+                    if isinstance(message, bytes):
+                        # Binary: 4 floats [beta, gamma, alpha, timestamp]
+                        if len(message) == 16:
+                            beta, gamma, alpha, timestamp = struct.unpack('<4f', message)
+                            self.state.update(beta, gamma, alpha, phone_timestamp=timestamp)
+                    elif isinstance(message, str):
+                        # JSON: calibrate messages
+                        try:
+                            data = json.loads(message)
+                        except json.JSONDecodeError:
+                            continue
+                        if data.get("type") == "calibrate":
+                            beta = float(data.get("beta", 0))
+                            gamma = float(data.get("gamma", 0))
+                            alpha = float(data.get("alpha", 0))
+                            self.state.calibrate(beta, gamma, alpha)
+                        elif data.get("type") == "throttle":
+                            self.state.set_throttle(float(data.get("value", 0.5)))
+            finally:
+                sender.cancel()
         except websockets.ConnectionClosed:
+            pass
+        finally:
+            self._clients.discard(websocket)
+
+    async def _telemetry_sender(self, websocket):
+        """Send drone telemetry to phone at ~5 Hz."""
+        try:
+            while True:
+                await asyncio.sleep(0.2)
+                try:
+                    await websocket.send(self.state.get_telemetry_json())
+                except websockets.ConnectionClosed:
+                    break
+        except asyncio.CancelledError:
             pass
 
     # --- SSL cert ---
@@ -238,6 +292,7 @@ if __name__ == "__main__":
                 f"\r  [{status}]  roll={result.roll_angle:+6.1f}  "
                 f"pitch={result.pitch_angle:+6.1f}  "
                 f"yaw={result.yaw_angle:+6.1f}  "
+                f"thr={result.throttle:.2f}  "
                 f"active={result.gesture_active}    ",
                 end="", flush=True,
             )

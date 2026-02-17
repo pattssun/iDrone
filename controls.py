@@ -18,6 +18,7 @@ class DroneCommand:
     roll_rate: float = 0.0     # degrees/sec
     pitch_rate: float = 0.0    # degrees/sec
     yaw_rate: float = 0.0      # degrees/sec
+    throttle: float = 0.5      # 0.0–1.0, 0.5 = hover
 
 
 class ControlMapper:
@@ -73,6 +74,9 @@ class ControlMapper:
 
             cmd.yaw_rate = float(yaw_rate)
             self._prev_yaw_rate = cmd.yaw_rate
+
+            # --- Throttle (pass through directly) ---
+            cmd.throttle = tracking.throttle
 
         else:
             # No gesture — zero out smoothly
