@@ -42,6 +42,8 @@ class PhoneState:
         self.drone_alt = 0.0
         self.drone_vs = 0.0
         self.drone_hs = 0.0
+        # Flip request (one-shot consumption)
+        self._pending_flip = ""
 
     def calibrate(self, beta: float, gamma: float, alpha: float = 0.0):
         with self._lock:
@@ -59,6 +61,16 @@ class PhoneState:
             self.last_update = time.time()
             self.phone_timestamp = phone_timestamp
             self.connected = True
+
+    def request_flip(self, direction: str):
+        with self._lock:
+            self._pending_flip = direction
+
+    def consume_flip(self) -> str:
+        with self._lock:
+            direction = self._pending_flip
+            self._pending_flip = ""
+            return direction
 
     def set_throttle(self, value: float):
         with self._lock:
@@ -114,6 +126,7 @@ class PhoneServer:
 
     def get_tracking_result(self) -> TrackingResult:
         roll, pitch, yaw, throttle, connected = self.state.get()
+        flip_direction = self.state.consume_flip()
         return TrackingResult(
             gesture_active=connected,
             roll_angle=roll,
@@ -121,6 +134,7 @@ class PhoneServer:
             yaw_angle=yaw,
             throttle=throttle,
             confidence=1.0 if connected else 0.0,
+            flip_direction=flip_direction,
         )
 
     def update_drone_state(self, state):
@@ -224,6 +238,10 @@ class PhoneServer:
                             self.state.calibrate(beta, gamma, alpha)
                         elif data.get("type") == "throttle":
                             self.state.set_throttle(float(data.get("value", 0.5)))
+                        elif data.get("type") == "flip":
+                            direction = data.get("direction", "front")
+                            if direction in ("front", "back", "left", "right"):
+                                self.state.request_flip(direction)
             finally:
                 sender.cancel()
         except websockets.ConnectionClosed:

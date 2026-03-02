@@ -19,6 +19,7 @@ class DroneCommand:
     pitch_rate: float = 0.0    # degrees/sec
     yaw_rate: float = 0.0      # degrees/sec
     throttle: float = 0.5      # 0.0–1.0, 0.5 = hover
+    flip_direction: str = ""   # "", "front", "back", "left", "right"
 
 
 class ControlMapper:
@@ -86,6 +87,9 @@ class ControlMapper:
             self._prev_pitch_rate *= 0.9
             self._smoothed_yaw *= 0.9
             self._prev_yaw_rate *= 0.9
+
+        # --- Flip (pass through regardless of gesture state) ---
+        cmd.flip_direction = tracking.flip_direction
 
         return cmd
 

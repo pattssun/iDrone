@@ -65,6 +65,11 @@ class Dashboard:
         label = "Connected" if connected else "Disconnected"
         self._draw_text(label, margin + 22, dot_y - 7, config.THEME_TEXT_SECONDARY, self._font_small)
 
+        # --- FLIP indicator (centered) ---
+        if state.is_flipping:
+            self._draw_text("FLIP", self.width // 2, self.height // 2 + 40,
+                            config.THEME_STATUS_ORANGE, self._font_large, center=True)
+
         # --- FPS (top-right) ---
         self._draw_text(f"{fps:.0f} FPS", self.width - margin - 55, self.height - margin - 12,
                         config.THEME_TEXT_SECONDARY, self._font_small)

@@ -70,7 +70,7 @@ class SimulatorAdapter(DroneInterface):
 
     def step(self, dt: float):
         """Advance the simulation. Called from the main loop."""
-        self._physics.step(self._last_command, dt)
+        self._physics.step(self._last_command, dt, flip_direction=self._last_command.flip_direction)
 
     def get_telemetry(self) -> Telemetry:
         s = self._physics.state

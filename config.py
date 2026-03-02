@@ -39,6 +39,12 @@ ALTITUDE_PID_MAX_INTEGRAL = 5.0
 LANDING_DESCENT_RATE = 0.5      # m/s
 LANDING_GROUND_THRESHOLD = 0.05  # meters, consider landed below this
 
+# --- Flip ---
+FLIP_DURATION = 0.7              # seconds for full 360° rotation
+FLIP_MIN_ALTITUDE = 2.0          # meters, minimum altitude to allow flip
+FLIP_ALTITUDE_DIP = 0.5          # meters, altitude loss during flip (parabolic)
+FLIP_COOLDOWN = 1.0              # seconds between flips
+
 # --- Renderer ---
 CHASE_CAM_DISTANCE = 5.0        # meters behind drone
 CHASE_CAM_HEIGHT = 2.5           # meters above drone

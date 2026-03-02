@@ -213,6 +213,10 @@ body {
     background: rgba(10,132,255,0.15); color: #0a84ff;
     border: 0.5px solid rgba(10,132,255,0.2);
 }
+.btn-flip {
+    background: rgba(255,159,10,0.15); color: #ff9f0a;
+    border: 0.5px solid rgba(255,159,10,0.2);
+}
 .btn:disabled { background: rgba(44,44,46,0.5); color: #48484a; cursor: default; border-color: transparent; }
 </style>
 </head>
@@ -283,6 +287,7 @@ body {
     <div class="btn-row">
         <button id="btnStart" class="btn btn-start">Start Gyroscope</button>
         <button id="btnCalibrate" class="btn btn-calibrate" disabled>Calibrate</button>
+        <button id="btnFlip" class="btn btn-flip" disabled>Flip</button>
     </div>
 </div>
 
@@ -303,6 +308,7 @@ const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 const btnStart = document.getElementById('btnStart');
 const btnCalibrate = document.getElementById('btnCalibrate');
+const btnFlip = document.getElementById('btnFlip');
 const attitudeInner = document.getElementById('attitudeInner');
 const valRoll = document.getElementById('valRoll');
 const valPitch = document.getElementById('valPitch');
@@ -370,6 +376,36 @@ btnCalibrate.addEventListener('click', () => {
     }
 });
 
+btnFlip.addEventListener('click', () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (btnFlip.disabled) return;
+
+    // Determine flip direction from current phone tilt
+    const absPitch = Math.abs(currentBeta);
+    const absRoll = Math.abs(currentGamma);
+    let direction;
+    if (absPitch < 5 && absRoll < 5) {
+        direction = 'front';  // phone level — default to front
+    } else if (absPitch >= absRoll) {
+        direction = currentBeta > 0 ? 'front' : 'back';
+    } else {
+        direction = currentGamma > 0 ? 'right' : 'left';
+    }
+
+    ws.send(JSON.stringify({ type: 'flip', direction: direction }));
+
+    // Visual feedback
+    const origText = btnFlip.textContent;
+    btnFlip.textContent = direction.charAt(0).toUpperCase() + direction.slice(1) + '!';
+    btnFlip.disabled = true;
+    setTimeout(() => {
+        btnFlip.textContent = origText;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            btnFlip.disabled = false;
+        }
+    }, 1200);
+});
+
 function startGyro() {
     gyroActive = true;
     window.addEventListener('deviceorientation', onOrientation);
@@ -431,6 +467,7 @@ function connectWS() {
         statusText.textContent = 'Connected';
         statusDot.classList.add('connected');
         btnCalibrate.disabled = false;
+        btnFlip.disabled = false;
     };
 
     ws.onmessage = (e) => {
@@ -455,6 +492,7 @@ function connectWS() {
         statusText.textContent = 'Disconnected';
         statusDot.classList.remove('connected');
         btnCalibrate.disabled = true;
+        btnFlip.disabled = true;
         valAlt.innerHTML = '--<span class="telemetry-unit"> m</span>';
         valVS.innerHTML = '--<span class="telemetry-unit"> m/s</span>';
         valHS.innerHTML = '--<span class="telemetry-unit"> m/s</span>';
