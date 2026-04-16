@@ -1,5 +1,5 @@
 """
-Mac DAC Sender - Phase 6
+Mac DAC Sender - Phase 6 (pots removed)
 Sends 4 channel values to the Pico over USB serial.
 
 Controls:
@@ -7,10 +7,9 @@ Controls:
   A/D              - yaw left/right
   Arrow Up/Down    - pitch forward/back
   Arrow Left/Right - roll left/right
-  C                - CENTER all (neutral position)
-  M                - ALL MAX (4095)
-  B                - BIND sequence
-  K                - KILLSWITCH
+  C                - CENTER all (2048 / 1.65V)
+  B                - BIND sequence (throttle max then zero)
+  K                - KILLSWITCH (throttle 0, rest center)
   Q                - quit
   +/-              - change step size
 
@@ -24,13 +23,9 @@ import sys
 import select
 import os
 
-NEUTRAL_THROTTLE = 2048
-NEUTRAL_YAW = 2048
-NEUTRAL_PITCH = 2048
-NEUTRAL_ROLL = 2048
+NEUTRAL = 2048
 
 def find_pico_port():
-    """Auto-detect the Pico's serial port."""
     ports = serial.tools.list_ports.comports()
     for port in ports:
         if "usbmodem" in port.device.lower() or "pico" in port.description.lower():
@@ -62,11 +57,10 @@ def main():
     else:
         print("Warning: didn't get READY signal, continuing anyway...")
 
-    # Current values - start at neutral
-    throttle = NEUTRAL_THROTTLE
-    yaw = NEUTRAL_YAW
-    pitch = NEUTRAL_PITCH
-    roll = NEUTRAL_ROLL
+    throttle = 0
+    yaw = NEUTRAL
+    pitch = NEUTRAL
+    roll = NEUTRAL
     step = 100
 
     def clamp(value):
@@ -88,42 +82,77 @@ def main():
     def killswitch():
         nonlocal throttle, yaw, pitch, roll
         throttle = 0
-        yaw = NEUTRAL_YAW
-        pitch = NEUTRAL_PITCH
-        roll = NEUTRAL_ROLL
+        yaw = NEUTRAL
+        pitch = NEUTRAL
+        roll = NEUTRAL
         for i in range(5):
-            cmd = f"0,{NEUTRAL_YAW},{NEUTRAL_PITCH},{NEUTRAL_ROLL}\n"
+            cmd = f"0,{NEUTRAL},{NEUTRAL},{NEUTRAL}\n"
             ser.write(cmd.encode())
             ser.flush()
         print("\n  *** KILLSWITCH ACTIVATED ***")
 
     def bind_sequence():
         nonlocal throttle
-        print("\n  *** BIND SEQUENCE ***")
-        throttle = 4095
-        print("  Throttle MAX...")
-        for i in range(10):
-            send_values()
-            time.sleep(0.1)
+        print("\n  *** BIND (0 -> max -> 0) ***")
         throttle = 0
-        print("  Throttle ZERO...")
-        for i in range(10):
+        print("  ZERO for 2 sec...")
+        for i in range(40):
             send_values()
-            time.sleep(0.1)
-        print("  Bind complete. Watch drone lights.")
-        throttle = NEUTRAL_THROTTLE
+            time.sleep(0.05)
+        throttle = 4095
+        print("  MAX for 1 sec...")
+        for i in range(20):
+            send_values()
+            time.sleep(0.05)
+        throttle = 0
+        print("  ZERO for 2 sec...")
+        for i in range(40):
+            send_values()
+            time.sleep(0.05)
+        print("  Done. Watch drone lights.")
         send_values()
 
-    # Set stdin to non-blocking raw mode
-    import tty
-    import termios
+    def bind_sequence_n():
+        nonlocal throttle
+        print("\n  *** BIND N (max -> 0) ***")
+        throttle = 4095
+        print("  MAX for 2 sec...")
+        for i in range(40):
+            send_values()
+            time.sleep(0.05)
+        throttle = 0
+        print("  ZERO for 2 sec...")
+        for i in range(40):
+            send_values()
+            time.sleep(0.05)
+        print("  Done. Watch drone lights.")
+        send_values()
 
-    old_settings = termios.tcgetattr(sys.stdin)
-    tty.setcbreak(sys.stdin.fileno())
-    # Make stdin non-blocking
-    import fcntl
-    old_flags = fcntl.fcntl(sys.stdin, fcntl.F_GETFL)
-    fcntl.fcntl(sys.stdin, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
+    def bind_sequence_p():
+        nonlocal throttle
+        print("\n  *** BIND P (center -> max -> 0 -> center) ***")
+        throttle = 2048
+        print("  CENTER for 1 sec...")
+        for i in range(20):
+            send_values()
+            time.sleep(0.05)
+        throttle = 4095
+        print("  MAX for 0.5 sec...")
+        for i in range(10):
+            send_values()
+            time.sleep(0.05)
+        throttle = 0
+        print("  ZERO for 0.5 sec...")
+        for i in range(10):
+            send_values()
+            time.sleep(0.05)
+        throttle = 2048
+        print("  CENTER for 1 sec...")
+        for i in range(20):
+            send_values()
+            time.sleep(0.05)
+        print("  Done. Watch drone lights.")
+        send_values()
 
     send_values()
 
@@ -132,22 +161,32 @@ def main():
     print("  A/D              - yaw left/right")
     print("  Arrow Up/Down    - pitch forward/back")
     print("  Arrow Left/Right - roll left/right")
-    print("  C                - CENTER all (neutral)")
+    print("  C                - CENTER all (2048)")
     print("  M                - ALL MAX (4095)")
-    print("  B                - BIND sequence")
-    print("  K                - KILLSWITCH (throttle 0, rest neutral)")
+    print("  B                - BIND (0 -> max -> 0)")
+    print("  N                - BIND (max -> 0)")
+    print("  P                - BIND (center -> max -> 0 -> center)")
+    print("  K                - KILLSWITCH")
     print("  Q                - quit")
     print("  +/-              - change step size")
-    print(f"\nStep size: {step}")
+    print(f"\nNeutral: {NEUTRAL} | Step size: {step}")
     print("-" * 60)
 
     try:
+        import tty
+        import termios
+        import fcntl
+
+        old_settings = termios.tcgetattr(sys.stdin)
+        tty.setcbreak(sys.stdin.fileno())
+        old_flags = fcntl.fcntl(sys.stdin, fcntl.F_GETFL)
+        fcntl.fcntl(sys.stdin, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
+
         running = True
         while running:
             send_values()
 
             if select.select([sys.stdin], [], [], 0.1)[0]:
-                # Read all available bytes at once
                 try:
                     data = sys.stdin.read(10)
                 except:
@@ -160,7 +199,6 @@ def main():
                 while i < len(data):
                     char = data[i]
 
-                    # Handle arrow keys (ESC [ A/B/C/D)
                     if char == '\x1b' and i + 2 < len(data) and data[i+1] == '[':
                         arrow = data[i+2]
                         if arrow == 'A':    # Arrow Up
@@ -174,7 +212,6 @@ def main():
                         i += 3
                         continue
 
-                    # Skip leftover ESC sequences
                     if char == '\x1b' or char == '[':
                         i += 1
                         continue
@@ -185,11 +222,11 @@ def main():
                     elif char == 'k' or char == 'K':
                         killswitch()
                     elif char == 'c' or char == 'C':
-                        throttle = NEUTRAL_THROTTLE
-                        yaw = NEUTRAL_YAW
-                        pitch = NEUTRAL_PITCH
-                        roll = NEUTRAL_ROLL
-                        print("\n  All set to neutral")
+                        throttle = NEUTRAL
+                        yaw = NEUTRAL
+                        pitch = NEUTRAL
+                        roll = NEUTRAL
+                        print("\n  All centered to 2048")
                     elif char == 'm' or char == 'M':
                         throttle = 4095
                         yaw = 4095
@@ -198,6 +235,10 @@ def main():
                         print("\n  All set to MAX (4095)")
                     elif char == 'b':
                         bind_sequence()
+                    elif char == 'n':
+                        bind_sequence_n()
+                    elif char == 'p':
+                        bind_sequence_p()
                     elif char == 'w' or char == 'W':
                         throttle = clamp(throttle + step)
                     elif char == 's' or char == 'S':
@@ -216,7 +257,6 @@ def main():
                     i += 1
 
     finally:
-        # Restore terminal
         fcntl.fcntl(sys.stdin, fcntl.F_SETFL, old_flags)
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
         killswitch()

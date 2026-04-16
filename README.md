@@ -170,6 +170,21 @@ DJI Fly-style 2D overlay drawn in orthographic projection on top of the 3D scene
 
 The phone displays a mirrored subset: attitude indicator, telemetry (Alt, V.Speed, H.Speed), and connection status. Telemetry data flows back from the server at 5 Hz via WebSocket.
 
+## Hand Tracking Throttle (Prototype)
+
+`hand_throttle.py` uses your MacBook webcam to control throttle via hand openness — closed fist = zero throttle, spread fingers = max throttle. This is a standalone prototype (no serial/hardware).
+
+```bash
+pip install mediapipe opencv-python
+python hand_throttle.py
+```
+
+1. Make a fist → press `C` to calibrate closed baseline
+2. Spread fingers → press `C` to calibrate open baseline
+3. Now hand openness maps to throttle (DAC 0–3000)
+4. Remove hand from frame → instant throttle 0
+5. Press `C` to re-calibrate, `Q`/ESC to quit
+
 ## Setup
 
 ```bash
@@ -225,6 +240,9 @@ All tunable parameters live in `config.py`:
 | `renderer.py` | OpenGL 3D scene rendering |
 | `dashboard.py` | OpenGL 2D HUD overlay |
 | `drone_interface.py` | Abstract drone interface + simulator adapter |
+| `hand_throttle.py` | Hand tracking throttle prototype (webcam + MediaPipe) |
+| `pico/mac_dac_sender.py` | Keyboard-based DAC debug tool (serial to Pico) |
+| `pico/pico_dac_controller.py` | Pico W firmware — receives serial, drives MCP4728 DAC |
 
 ## World Layout
 

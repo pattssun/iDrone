@@ -3,7 +3,7 @@ import sys, select, time
 i2c = I2C(0, sda=Pin(4), scl=Pin(5))
 led = Pin('LED', Pin.OUT)
 TIMEOUT_MS = 500
-NEUTRAL = 4095
+NEUTRAL = 2048
 def set_dac(ch, val):
     val = max(0, min(4095, val))
     d = bytearray(3)
@@ -40,4 +40,3 @@ while True:
     if time.ticks_diff(time.ticks_ms(), last) > TIMEOUT_MS:
         safe(); led.off(); last = time.ticks_ms()
     time.sleep_ms(1)
-    
