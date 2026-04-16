@@ -2,7 +2,7 @@
 
 Usage:
   python main.py          # phone gyro control
-  python main.py --hand   # hand tracking throttle + keyboard pitch/roll/yaw
+  python main.py --hand   # hand tracking throttle + joystick pitch/roll/yaw
 """
 
 import argparse
@@ -63,7 +63,7 @@ def _draw_gl_text(text, x, y, win_w, win_h, size=24, color=(255, 255, 255), cent
     glDeleteTextures([tex])
 
 
-def draw_hand_hud(frame_bgr, win_w, win_h, cal_state, cal_progress, throttle, hand_found):
+def draw_hand_hud(frame_bgr, win_w, win_h, cal_state, cal_progress, throttle, hand_found, joy_connected=False):
     """Draw webcam PiP + calibration/status overlay on the simulator window."""
     from hand_throttle import CAL_DONE, CAL_WAITING_CLOSED, CAL_SAMPLING_CLOSED
     from hand_throttle import CAL_WAITING_OPEN, CAL_SAMPLING_OPEN
@@ -144,6 +144,11 @@ def draw_hand_hud(frame_bgr, win_w, win_h, cal_state, cal_progress, throttle, ha
         # PiP label
         _draw_gl_text("HAND CAM", x0 + 6, y1 - 22, win_w, win_h,
                        size=14, color=(200, 200, 200))
+
+        # Joystick badge
+        if joy_connected:
+            _draw_gl_text("JOYSTICK", x0 + 6, y0 + 4, win_w, win_h,
+                           size=12, color=(0, 200, 255))
 
     # =============================================
     # CALIBRATION OVERLAY — big centered text
@@ -244,6 +249,7 @@ def main():
 
     # --- Hand tracker (optional) ---
     hand_tracker = None
+    joy = None
     if args.hand:
         from hand_throttle import HandTracker
         hand_tracker = HandTracker()
@@ -257,6 +263,16 @@ def main():
         DOUBLEBUF | OPENGL | RESIZABLE,
     )
     pygame.display.set_caption("iDrone")
+
+    # --- Joystick for hand-tracking mode ---
+    if hand_tracker:
+        pygame.joystick.init()
+        if pygame.joystick.get_count() > 0:
+            joy = pygame.joystick.Joystick(0)
+            joy.init()
+            print(f"  Joystick: {joy.get_name()} ({joy.get_numaxes()} axes)")
+        else:
+            print("  No joystick — using keyboard for pitch/roll/yaw")
 
     # --- Initialize components ---
     control_mapper = ControlMapper()
@@ -294,7 +310,10 @@ def main():
     print("iDrone Simulator")
     if hand_tracker:
         print("  Hand tracking: throttle from webcam")
-        print("  Keyboard: arrow keys = pitch/roll, A/D = yaw")
+        if joy:
+            print(f"  Joystick: {joy.get_name()} for pitch/roll/yaw")
+        else:
+            print("  Keyboard: arrow keys = pitch/roll, A/D = yaw")
     else:
         print("  Phone gyro:")
         print(f"    Open on phone: {phone_server.url}")
@@ -340,28 +359,43 @@ def main():
 
         # --- Input ---
         if hand_tracker:
-            # Keyboard held-key polling for pitch/roll/yaw
-            keys = pygame.key.get_pressed()
-            if keys[K_UP]:
-                kb_pitch = min(45.0, kb_pitch + KB_RATE * dt)
-            elif keys[K_DOWN]:
-                kb_pitch = max(-45.0, kb_pitch - KB_RATE * dt)
-            else:
-                kb_pitch *= (1.0 - 3.0 * dt)  # auto-center
+            if joy:
+                # Joystick axes for pitch/roll/yaw
+                from hand_throttle import apply_deadzone, JOY_AXIS_ROLL, JOY_AXIS_PITCH, JOY_AXIS_YAW
+                raw_roll = joy.get_axis(JOY_AXIS_ROLL)
+                raw_pitch = joy.get_axis(JOY_AXIS_PITCH)
+                raw_yaw = 0.0
+                if joy.get_numaxes() > JOY_AXIS_YAW:
+                    raw_yaw = joy.get_axis(JOY_AXIS_YAW)
+                elif joy.get_numaxes() > 2:
+                    raw_yaw = joy.get_axis(2)
 
-            if keys[K_RIGHT]:
-                kb_roll = min(45.0, kb_roll + KB_RATE * dt)
-            elif keys[K_LEFT]:
-                kb_roll = max(-45.0, kb_roll - KB_RATE * dt)
+                kb_roll = apply_deadzone(raw_roll) * 45.0
+                kb_pitch = apply_deadzone(-raw_pitch) * 45.0  # invert Y
+                kb_yaw = apply_deadzone(raw_yaw) * 45.0
             else:
-                kb_roll *= (1.0 - 3.0 * dt)
+                # Keyboard fallback
+                keys = pygame.key.get_pressed()
+                if keys[K_UP]:
+                    kb_pitch = min(45.0, kb_pitch + KB_RATE * dt)
+                elif keys[K_DOWN]:
+                    kb_pitch = max(-45.0, kb_pitch - KB_RATE * dt)
+                else:
+                    kb_pitch *= (1.0 - 3.0 * dt)  # auto-center
 
-            if keys[K_d]:
-                kb_yaw = min(45.0, kb_yaw + KB_RATE * dt)
-            elif keys[K_a]:
-                kb_yaw = max(-45.0, kb_yaw - KB_RATE * dt)
-            else:
-                kb_yaw *= (1.0 - 3.0 * dt)
+                if keys[K_RIGHT]:
+                    kb_roll = min(45.0, kb_roll + KB_RATE * dt)
+                elif keys[K_LEFT]:
+                    kb_roll = max(-45.0, kb_roll - KB_RATE * dt)
+                else:
+                    kb_roll *= (1.0 - 3.0 * dt)
+
+                if keys[K_d]:
+                    kb_yaw = min(45.0, kb_yaw + KB_RATE * dt)
+                elif keys[K_a]:
+                    kb_yaw = max(-45.0, kb_yaw - KB_RATE * dt)
+                else:
+                    kb_yaw *= (1.0 - 3.0 * dt)
 
             hand_throttle, hand_found = hand_tracker.get_throttle()
             tracking_result = TrackingResult(
@@ -393,7 +427,8 @@ def main():
         if hand_tracker:
             throttle_val, hand_found_val, cal_st, cal_prog = hand_tracker.get_status()
             draw_hand_hud(hand_tracker.get_frame(), win_w, win_h,
-                          cal_st, cal_prog, throttle_val, hand_found_val)
+                          cal_st, cal_prog, throttle_val, hand_found_val,
+                          joy_connected=(joy is not None))
 
         # --- Swap buffers ---
         pygame.display.flip()

@@ -1,8 +1,7 @@
 """
-Hand Tracking Throttle — Phase 2
-Opens MacBook webcam, tracks hand openness via MediaPipe, sends throttle
-to Pico over USB serial. Yaw/pitch/roll stay at neutral (2048) for
-physical joystick control.
+Hand Tracking Throttle — Phase 3
+Hybrid input: webcam hand tracking for throttle, USB joystick for
+yaw/pitch/roll via pygame. Sends all 4 channels to Pico over USB serial.
 
 Controls:
   C - calibrate (fist first, then spread)
@@ -10,10 +9,12 @@ Controls:
   Q / ESC - quit
 
 Usage:
-  python hand_throttle.py              # with Pico connected
-  python hand_throttle.py --no-serial  # prototype mode, no hardware
+  python hand_throttle.py                            # with Pico + joystick
+  python hand_throttle.py --no-serial                # no Pico hardware
+  python hand_throttle.py --no-joystick              # neutral yaw/pitch/roll
+  python hand_throttle.py --no-serial --no-joystick  # prototype mode
 
-Requires: pip install mediapipe opencv-python pyserial
+Requires: pip install mediapipe opencv-python pyserial pygame
 """
 
 import argparse
@@ -31,8 +32,15 @@ EMA_ALPHA = 0.3
 CLOSED_FIST_THRESHOLD = 0.05
 THROTTLE_CAP = 3000
 NEUTRAL = 2048
+DAC_MAX = 4095
 CALIBRATION_FRAMES = 30
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "hand_landmarker.task")
+
+# Joystick axis mapping (common gamepad layout)
+JOY_AXIS_ROLL = 0     # left stick X
+JOY_AXIS_PITCH = 1    # left stick Y
+JOY_AXIS_YAW = 3      # right stick X
+JOYSTICK_DEADZONE = 0.08
 
 # Landmark indices
 WRIST = 0
@@ -75,6 +83,34 @@ def compute_raw_openness(landmarks):
     return sum(ratios) / len(ratios) if ratios else 0.0
 
 
+def init_joystick():
+    """Initialize pygame joystick subsystem, return first joystick or None."""
+    import pygame
+    if not pygame.get_init():
+        pygame.init()
+    pygame.joystick.init()
+    if pygame.joystick.get_count() == 0:
+        return None
+    joy = pygame.joystick.Joystick(0)
+    joy.init()
+    print(f"Joystick: {joy.get_name()} ({joy.get_numaxes()} axes, {joy.get_numbuttons()} buttons)")
+    return joy
+
+
+def apply_deadzone(value, deadzone=JOYSTICK_DEADZONE):
+    """Apply deadzone and rescale axis value from -1..1."""
+    if abs(value) < deadzone:
+        return 0.0
+    sign = 1.0 if value > 0 else -1.0
+    return sign * (abs(value) - deadzone) / (1.0 - deadzone)
+
+
+def axis_to_dac(value):
+    """Map axis (-1..1) to DAC (0..4095) centered on NEUTRAL."""
+    clamped = max(-1.0, min(1.0, value))
+    return max(0, min(DAC_MAX, int(NEUTRAL + clamped * NEUTRAL)))
+
+
 def find_pico_port():
     """Auto-detect Pico serial port."""
     import serial.tools.list_ports
@@ -113,9 +149,9 @@ def connect_pico():
     return ser
 
 
-def send_to_pico(ser, throttle_dac):
-    """Send throttle,neutral,neutral,neutral to Pico. Drain read buffer."""
-    cmd = f"{throttle_dac},{NEUTRAL},{NEUTRAL},{NEUTRAL}\n"
+def send_to_pico(ser, throttle_dac, yaw_dac=NEUTRAL, pitch_dac=NEUTRAL, roll_dac=NEUTRAL):
+    """Send throttle,yaw,pitch,roll to Pico. Drain read buffer."""
+    cmd = f"{throttle_dac},{yaw_dac},{pitch_dac},{roll_dac}\n"
     ser.write(cmd.encode())
     ser.flush()
     while ser.in_waiting:
@@ -234,6 +270,18 @@ def draw_overlay(frame, throttle_pct, dac_value, hand_found, cal_state, cal_prog
 
     # Blend overlay
     cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
+
+
+def draw_joystick_overlay(frame, yaw_dac, pitch_dac, roll_dac, joy_connected):
+    """Draw joystick channel readouts on the webcam frame."""
+    if not joy_connected:
+        return
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    y0 = 55
+    cv2.putText(frame, "JOYSTICK", (15, y0), font, 0.45, (0, 200, 255), 1)
+    cv2.putText(frame, f"YAW  {yaw_dac:4d}", (15, y0 + 18), font, 0.4, (180, 180, 180), 1)
+    cv2.putText(frame, f"PTCH {pitch_dac:4d}", (15, y0 + 36), font, 0.4, (180, 180, 180), 1)
+    cv2.putText(frame, f"ROLL {roll_dac:4d}", (15, y0 + 54), font, 0.4, (180, 180, 180), 1)
 
 
 class HandTracker:
@@ -438,21 +486,50 @@ class HandTracker:
         cv2.destroyAllWindows()
 
 
+def read_joystick(joy):
+    """Read joystick axes and return (yaw_dac, pitch_dac, roll_dac)."""
+    import pygame
+    pygame.event.pump()
+
+    raw_roll = joy.get_axis(JOY_AXIS_ROLL)
+    raw_pitch = joy.get_axis(JOY_AXIS_PITCH)
+    raw_yaw = 0.0
+    if joy.get_numaxes() > JOY_AXIS_YAW:
+        raw_yaw = joy.get_axis(JOY_AXIS_YAW)
+    elif joy.get_numaxes() > 2:
+        raw_yaw = joy.get_axis(2)
+
+    roll_dac = axis_to_dac(apply_deadzone(raw_roll))
+    pitch_dac = axis_to_dac(apply_deadzone(-raw_pitch))  # invert Y axis
+    yaw_dac = axis_to_dac(apply_deadzone(raw_yaw))
+    return yaw_dac, pitch_dac, roll_dac
+
+
 def main():
     parser = argparse.ArgumentParser(description="Hand tracking throttle control")
     parser.add_argument("--no-serial", action="store_true", help="Run without Pico hardware")
+    parser.add_argument("--no-joystick", action="store_true",
+                        help="Skip joystick, send neutral yaw/pitch/roll")
     args = parser.parse_args()
 
     ser = None
     if not args.no_serial:
         ser = connect_pico()
 
+    # Joystick init (pygame subsystem only, no display window)
+    joy = None
+    if not args.no_joystick:
+        joy = init_joystick()
+        if joy is None:
+            print("No joystick found — yaw/pitch/roll will stay at neutral")
+
     tracker = HandTracker()
 
     serial_status = "CONNECTED" if ser else "OFF (--no-serial)"
-    print(f"Hand Throttle — Serial: {serial_status}")
+    joy_status = joy.get_name() if joy else "NONE"
+    print(f"Hand Throttle Phase 3 — Serial: {serial_status}, Joystick: {joy_status}")
     print("Press C to calibrate, K to kill, Q/ESC to quit")
-    print("-" * 40)
+    print("-" * 50)
 
     frame_idx = 0
     try:
@@ -462,10 +539,20 @@ def main():
                 break
             frame, hand_found, throttle_pct, dac_value = result
 
-            if ser:
-                send_to_pico(ser, dac_value)
+            # Read joystick for yaw/pitch/roll
+            yaw_dac = NEUTRAL
+            pitch_dac = NEUTRAL
+            roll_dac = NEUTRAL
+            if joy:
+                yaw_dac, pitch_dac, roll_dac = read_joystick(joy)
 
-            # Overlay already drawn by process_frame; add serial badge
+            if ser:
+                send_to_pico(ser, dac_value, yaw_dac, pitch_dac, roll_dac)
+
+            # Draw joystick overlay on frame
+            draw_joystick_overlay(frame, yaw_dac, pitch_dac, roll_dac, joy is not None)
+
+            # Serial badge
             if ser:
                 cv2.putText(frame, "SERIAL", (frame.shape[1] - 100, 32),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
@@ -473,7 +560,7 @@ def main():
             if frame_idx % 5 == 0:
                 serial_tag = " [TX]" if ser else ""
                 sys.stdout.write(
-                    f"\ropenness={throttle_pct:.2f} dac={dac_value:4d} hand_found={hand_found}{serial_tag}   "
+                    f"\rT={dac_value:4d} Y={yaw_dac:4d} P={pitch_dac:4d} R={roll_dac:4d}{serial_tag}   "
                 )
                 sys.stdout.flush()
 
@@ -487,7 +574,7 @@ def main():
                 tracker.killswitch()
                 if ser:
                     for _ in range(5):
-                        send_to_pico(ser, 0)
+                        send_to_pico(ser, 0, NEUTRAL, NEUTRAL, NEUTRAL)
                 print("\n  *** KILLSWITCH ***")
             elif key == ord('c') or key == ord('C'):
                 tracker.start_calibration()
@@ -496,10 +583,13 @@ def main():
         print("\nShutting down...")
         if ser:
             for _ in range(5):
-                send_to_pico(ser, 0)
+                send_to_pico(ser, 0, NEUTRAL, NEUTRAL, NEUTRAL)
             ser.close()
             print("Serial closed. Safe defaults sent.")
         tracker.stop()
+        if joy:
+            import pygame
+            pygame.quit()
 
 
 if __name__ == "__main__":
