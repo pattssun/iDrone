@@ -340,16 +340,17 @@ class HandTracker:
         raw_openness = 0.0
 
         result = self._latest_result[0]
+        landmarks = None
         if result and result.hand_landmarks:
             # Only track the right hand (appears on right side of mirrored frame)
-            landmarks = None
             for lm in result.hand_landmarks:
                 if lm[0].x >= 0.5:  # wrist on right half = user's right hand
                     landmarks = lm
                     break
-            if landmarks is not None:
-                hand_found = True
-                raw_openness = compute_raw_openness(landmarks)
+
+        if landmarks is not None:
+            hand_found = True
+            raw_openness = compute_raw_openness(landmarks)
 
             # Draw hand skeleton
             h, w = frame.shape[:2]
