@@ -300,7 +300,7 @@ class HandTracker:
         options = vision.HandLandmarkerOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=MODEL_PATH),
             running_mode=vision.RunningMode.LIVE_STREAM,
-            num_hands=1,
+            num_hands=2,
             min_hand_detection_confidence=0.5,
             min_tracking_confidence=0.5,
             result_callback=on_result,
@@ -341,9 +341,15 @@ class HandTracker:
 
         result = self._latest_result[0]
         if result and result.hand_landmarks:
-            hand_found = True
-            landmarks = result.hand_landmarks[0]
-            raw_openness = compute_raw_openness(landmarks)
+            # Only track the right hand (appears on right side of mirrored frame)
+            landmarks = None
+            for lm in result.hand_landmarks:
+                if lm[0].x >= 0.5:  # wrist on right half = user's right hand
+                    landmarks = lm
+                    break
+            if landmarks is not None:
+                hand_found = True
+                raw_openness = compute_raw_openness(landmarks)
 
             # Draw hand skeleton
             h, w = frame.shape[:2]
