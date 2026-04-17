@@ -390,9 +390,12 @@ class HandTracker:
                 print("  Calibration complete!")
 
         # Compute throttle
+        # HS210 uses center-sprung throttle: NEUTRAL = hover, above = climb
+        # Fist / no hand → NEUTRAL (hover), open hand → DAC_MAX (full climb)
+        # Killswitch overrides to 0 (emergency descent)
         if not hand_found or self.cal_state != CAL_DONE:
             self._smoothed_openness = 0.0
-            dac_value = 0
+            dac_value = NEUTRAL
             throttle_pct = 0.0
         else:
             spread = self._open_baseline - self._closed_baseline
@@ -407,7 +410,7 @@ class HandTracker:
             else:
                 self._smoothed_openness = EMA_ALPHA * normalized + (1 - EMA_ALPHA) * self._smoothed_openness
 
-            dac_value = int(self._smoothed_openness * THROTTLE_CAP)
+            dac_value = int(NEUTRAL + self._smoothed_openness * (DAC_MAX - NEUTRAL))
             throttle_pct = self._smoothed_openness
 
         # Calibration progress for UI
