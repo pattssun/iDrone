@@ -1,10 +1,10 @@
 """
-Hand Tracking Throttle — Phase 3
-Hybrid input: webcam hand tracking for throttle, USB joystick for
-yaw/pitch/roll via pygame. Sends all 4 channels to Pico over USB serial.
+Hand Tracking Throttle — Zone Control
+Webcam divided into top/bottom zones. Fist = hover. Open hand in top half
+= climb, bottom half = descend. Intensity by distance from midline.
+No calibration needed — start flying immediately.
 
 Controls:
-  C - calibrate (fist first, then spread)
   K - killswitch (immediate throttle 0)
   Q / ESC - quit
 
@@ -28,13 +28,17 @@ import mediapipe as mp
 from mediapipe.tasks.python import vision
 
 # --- Constants ---
+import random
+
 EMA_ALPHA = 0.3
-CLOSED_FIST_THRESHOLD = 0.05
-THROTTLE_CAP = 3000
 NEUTRAL = 2048
 DAC_MAX = 4095
-CALIBRATION_FRAMES = 30
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "hand_landmarker.task")
+
+# Zone control
+FIST_THRESHOLD = 1.3      # raw openness below this = fist → hover
+DEADZONE_HALF = 0.08      # ±8% of frame height around midline
+PARTICLE_COUNT = 50        # drifting HUD particles
 
 # Joystick axis mapping (common gamepad layout)
 JOY_AXIS_ROLL = 0     # left stick X
@@ -57,13 +61,11 @@ HAND_CONNECTIONS = [
     (5,9),(9,13),(13,17),           # palm
 ]
 
-# Calibration states
-CAL_NONE = 0
-CAL_WAITING_CLOSED = 1
-CAL_SAMPLING_CLOSED = 2
-CAL_WAITING_OPEN = 3
-CAL_SAMPLING_OPEN = 4
-CAL_DONE = 5
+
+# Zone colors (BGR)
+CLIMB_COLOR = (0, 200, 80)
+DESCEND_COLOR = (60, 60, 220)
+HOVER_COLOR = (60, 220, 220)
 
 
 def dist(a, b):
@@ -81,6 +83,60 @@ def compute_raw_openness(landmarks):
         if mcp_dist > 1e-6:
             ratios.append(tip_dist / mcp_dist)
     return sum(ratios) / len(ratios) if ratios else 0.0
+
+
+def palm_centroid(landmarks):
+    """Mean x, y of all 21 landmarks in normalized [0,1] coords."""
+    cx = sum(lm.x for lm in landmarks) / len(landmarks)
+    cy = sum(lm.y for lm in landmarks) / len(landmarks)
+    return cx, cy
+
+
+def is_fist(landmarks):
+    return compute_raw_openness(landmarks) < FIST_THRESHOLD
+
+
+def compute_zone_dac(palm_cy, fist):
+    """Map palm y-position + fist state to (dac_value, zone, intensity).
+    zone: 'climb'|'descend'|'hover'|'deadzone'. intensity: 0..1."""
+    if fist:
+        return NEUTRAL, "hover", 0.0
+
+    top_edge = 0.5 - DEADZONE_HALF
+    bot_edge = 0.5 + DEADZONE_HALF
+
+    if palm_cy < top_edge:
+        intensity = min(1.0, (top_edge - palm_cy) / top_edge)
+        dac = int(NEUTRAL + intensity * (DAC_MAX - NEUTRAL))
+        return min(DAC_MAX, dac), "climb", intensity
+    elif palm_cy > bot_edge:
+        intensity = min(1.0, (palm_cy - bot_edge) / (1.0 - bot_edge))
+        dac = int(NEUTRAL - intensity * NEUTRAL)
+        return max(0, dac), "descend", intensity
+    else:
+        return NEUTRAL, "deadzone", 0.0
+
+
+def _init_particles():
+    """Create a pool of particles for the drifting effect."""
+    return [{"x": random.random(), "y": random.random(), "r": random.uniform(1.5, 3.5)}
+            for _ in range(PARTICLE_COUNT)]
+
+
+def _step_particles(particles, zone, intensity, dt=0.033):
+    """Advance particle positions. Drift up in top zone, down in bottom zone."""
+    base_speed = intensity * 0.6
+    for p in particles:
+        if zone == "climb":
+            p["y"] -= base_speed * dt * random.uniform(0.5, 1.5)
+            if p["y"] < 0:
+                p["y"] = 1.0
+                p["x"] = random.random()
+        elif zone == "descend":
+            p["y"] += base_speed * dt * random.uniform(0.5, 1.5)
+            if p["y"] > 1:
+                p["y"] = 0.0
+                p["x"] = random.random()
 
 
 def init_joystick():
@@ -158,51 +214,78 @@ def send_to_pico(ser, throttle_dac, yaw_dac=NEUTRAL, pitch_dac=NEUTRAL, roll_dac
         ser.read(ser.in_waiting)
 
 
-def draw_overlay(frame, throttle_pct, dac_value, hand_found, cal_state, cal_progress=0.0):
-    """Draw full HUD overlay: throttle arc, status, calibration prompts."""
+def draw_zone_overlay(frame, dac_value, throttle_pct, hand_found, zone, intensity,
+                      particles, palm_pos=None, fist_state=False):
+    """Draw zone-based HUD: tints, midline, particles, arrow, status, DAC arc."""
     h, w = frame.shape[:2]
-    # Dim background slightly for contrast
     overlay = frame.copy()
-
-    # --- Throttle arc gauge (bottom-right) ---
-    arc_cx = w - 80
-    arc_cy = h - 80
-    arc_r = 55
-    arc_thickness = 12
-
-    # Background arc (270 degrees, from 135 to 405)
-    cv2.ellipse(overlay, (arc_cx, arc_cy), (arc_r, arc_r), 0, 135, 405, (40, 40, 40), arc_thickness)
-    # Filled arc
-    if throttle_pct > 0.01:
-        fill_angle = 135 + int(270 * throttle_pct)
-        # Color gradient: green at low, yellow at mid, red at high
-        if throttle_pct < 0.5:
-            color = (0, 220, 50)
-        elif throttle_pct < 0.8:
-            color = (0, 220, 220)
-        else:
-            color = (0, 80, 255)
-        cv2.ellipse(overlay, (arc_cx, arc_cy), (arc_r, arc_r), 0, 135, fill_angle, color, arc_thickness)
-
-    # Percentage in center of arc
-    pct_text = f"{int(throttle_pct * 100)}"
     font = cv2.FONT_HERSHEY_SIMPLEX
-    (tw, th), _ = cv2.getTextSize(pct_text, font, 1.2, 3)
-    cv2.putText(overlay, pct_text, (arc_cx - tw // 2, arc_cy + th // 3), font, 1.2, (255, 255, 255), 3)
-    # Small % below
-    cv2.putText(overlay, "%", (arc_cx - 8, arc_cy + th // 3 + 22), font, 0.5, (180, 180, 180), 1)
+    mid_y = h // 2
+    dz_top = int(h * (0.5 - DEADZONE_HALF))
+    dz_bot = int(h * (0.5 + DEADZONE_HALF))
+
+    # --- Zone tints ---
+    green_tint = overlay[:dz_top].copy()
+    green_tint[:] = (green_tint * 0.85 + [0, 25, 0]).clip(0, 255).astype("uint8")
+    overlay[:dz_top] = green_tint
+    red_tint = overlay[dz_bot:].copy()
+    red_tint[:] = (red_tint * 0.85 + [0, 0, 25]).clip(0, 255).astype("uint8")
+    overlay[dz_bot:] = red_tint
+
+    # Midline
+    cv2.line(overlay, (0, mid_y), (w, mid_y), (255, 255, 255), 1, cv2.LINE_AA)
+    # Deadzone boundary dashes
+    for x in range(0, w, 20):
+        cv2.line(overlay, (x, dz_top), (min(x + 10, w), dz_top), (120, 120, 120), 1)
+        cv2.line(overlay, (x, dz_bot), (min(x + 10, w), dz_bot), (120, 120, 120), 1)
+
+    # --- Drifting particles ---
+    for p in particles:
+        px = int(p["x"] * w)
+        py = int(p["y"] * h)
+        pr = int(p["r"])
+        if zone == "climb" and p["y"] < 0.5:
+            brightness = min(255, int(80 + 175 * intensity))
+            color = (0, brightness, int(brightness * 0.4))
+        elif zone == "descend" and p["y"] > 0.5:
+            brightness = min(255, int(80 + 175 * intensity))
+            color = (int(brightness * 0.3), int(brightness * 0.3), brightness)
+        else:
+            color = (50, 50, 50)
+        cv2.circle(overlay, (px, py), pr, color, -1, cv2.LINE_AA)
+
+    # --- Direction arrow (near hand) ---
+    if palm_pos and zone in ("climb", "descend"):
+        ax = int(palm_pos[0] * w) + 60
+        ay = int(palm_pos[1] * h)
+        arrow_size = int(15 + 25 * intensity)
+        arrow_color = CLIMB_COLOR if zone == "climb" else DESCEND_COLOR
+        if zone == "climb":
+            pts = [(ax, ay - arrow_size), (ax - arrow_size // 2, ay), (ax + arrow_size // 2, ay)]
+        else:
+            pts = [(ax, ay + arrow_size), (ax - arrow_size // 2, ay), (ax + arrow_size // 2, ay)]
+        import numpy as np
+        cv2.fillPoly(overlay, [np.array(pts)], arrow_color)
 
     # --- Status badge (top-left) ---
-    if hand_found:
-        badge_color = (0, 200, 80)
-        badge_text = "TRACKING"
-    else:
+    if not hand_found:
         badge_color = (60, 60, 220)
         badge_text = "NO HAND"
+    elif fist_state:
+        badge_color = HOVER_COLOR
+        badge_text = "FIST  HOVER"
+    elif zone == "climb":
+        badge_color = CLIMB_COLOR
+        badge_text = "CLIMB"
+    elif zone == "descend":
+        badge_color = DESCEND_COLOR
+        badge_text = "DESCEND"
+    else:
+        badge_color = HOVER_COLOR
+        badge_text = "HOVER"
 
-    badge_w = 140
+    badge_w = 160
     badge_h = 32
-    # Rounded rect approximation
     cv2.rectangle(overlay, (12, 10), (12 + badge_w, 10 + badge_h), badge_color, -1)
     cv2.rectangle(overlay, (12, 10), (12 + badge_w, 10 + badge_h), (255, 255, 255), 1)
     (btw, bth), _ = cv2.getTextSize(badge_text, font, 0.55, 2)
@@ -211,64 +294,24 @@ def draw_overlay(frame, throttle_pct, dac_value, hand_found, cal_state, cal_prog
                 font, 0.55, (255, 255, 255), 2)
 
     # --- DAC readout (top-right) ---
-    dac_text = f"DAC {dac_value}"
-    cv2.putText(overlay, dac_text, (w - 150, 32), font, 0.6, (0, 255, 255), 2)
+    cv2.putText(overlay, f"DAC {dac_value}", (w - 150, 32), font, 0.6, (0, 255, 255), 2)
 
-    # --- Calibration overlay ---
-    if cal_state != CAL_DONE:
-        # Semi-transparent dark banner across the middle
-        banner_top = h // 2 - 60
-        banner_bot = h // 2 + 60
-        sub = overlay[banner_top:banner_bot, :]
-        dark = (sub * 0.3).astype(sub.dtype)
-        overlay[banner_top:banner_bot, :] = dark
+    # --- Throttle arc (bottom-right) ---
+    arc_cx = w - 80
+    arc_cy = h - 80
+    arc_r = 55
+    arc_t = 12
+    cv2.ellipse(overlay, (arc_cx, arc_cy), (arc_r, arc_r), 0, 135, 405, (40, 40, 40), arc_t)
+    if throttle_pct > 0.01:
+        fill_angle = 135 + int(270 * throttle_pct)
+        arc_color = CLIMB_COLOR if zone == "climb" else DESCEND_COLOR if zone == "descend" else HOVER_COLOR
+        cv2.ellipse(overlay, (arc_cx, arc_cy), (arc_r, arc_r), 0, 135, fill_angle, arc_color, arc_t)
+    pct_text = f"{int(throttle_pct * 100)}"
+    (tw, th), _ = cv2.getTextSize(pct_text, font, 1.2, 3)
+    cv2.putText(overlay, pct_text, (arc_cx - tw // 2, arc_cy + th // 3), font, 1.2, (255, 255, 255), 3)
+    cv2.putText(overlay, "%", (arc_cx - 8, arc_cy + th // 3 + 22), font, 0.5, (180, 180, 180), 1)
 
-        if cal_state == CAL_WAITING_CLOSED:
-            line1 = "CALIBRATION"
-            line2 = "Make a FIST"
-            line3 = "Press [C] when ready"
-            accent = (0, 200, 255)
-        elif cal_state == CAL_SAMPLING_CLOSED:
-            line1 = "SAMPLING FIST"
-            line2 = f"Hold still... {int(cal_progress * 100)}%"
-            line3 = ""
-            accent = (0, 180, 255)
-        elif cal_state == CAL_WAITING_OPEN:
-            line1 = "CALIBRATION"
-            line2 = "SPREAD fingers wide"
-            line3 = "Press [C] when ready"
-            accent = (0, 255, 200)
-        elif cal_state == CAL_SAMPLING_OPEN:
-            line1 = "SAMPLING OPEN"
-            line2 = f"Hold still... {int(cal_progress * 100)}%"
-            line3 = ""
-            accent = (0, 255, 180)
-        else:
-            line1 = line2 = line3 = ""
-            accent = (255, 255, 255)
-
-        # Line 1 — title
-        (t1w, t1h), _ = cv2.getTextSize(line1, font, 0.9, 2)
-        cv2.putText(overlay, line1, (w // 2 - t1w // 2, h // 2 - 25), font, 0.9, accent, 2)
-
-        # Line 2 — instruction
-        (t2w, t2h), _ = cv2.getTextSize(line2, font, 0.7, 2)
-        cv2.putText(overlay, line2, (w // 2 - t2w // 2, h // 2 + 10), font, 0.7, (255, 255, 255), 2)
-
-        # Line 3 — hint
-        if line3:
-            (t3w, t3h), _ = cv2.getTextSize(line3, font, 0.5, 1)
-            cv2.putText(overlay, line3, (w // 2 - t3w // 2, h // 2 + 40), font, 0.5, (160, 160, 160), 1)
-
-        # Progress bar during sampling
-        if cal_state in (CAL_SAMPLING_CLOSED, CAL_SAMPLING_OPEN) and cal_progress > 0:
-            bar_margin = w // 4
-            bar_y = h // 2 + 50
-            cv2.rectangle(overlay, (bar_margin, bar_y), (w - bar_margin, bar_y + 6), (60, 60, 60), -1)
-            fill_w = int((w - 2 * bar_margin) * cal_progress)
-            cv2.rectangle(overlay, (bar_margin, bar_y), (bar_margin + fill_w, bar_y + 6), accent, -1)
-
-    # Blend overlay
+    # Blend
     cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
 
 
@@ -311,22 +354,21 @@ class HandTracker:
         if not self._cap.isOpened():
             raise RuntimeError("Cannot open webcam")
 
-        self.cal_state = CAL_WAITING_CLOSED
-        self._closed_baseline = 1.0
-        self._open_baseline = 2.0
-        self._cal_samples = []
-        self._smoothed_openness = 0.0
+        self._smoothed_dac = float(NEUTRAL)
+        self._zone = "hover"
+        self._intensity = 0.0
+        self._particles = _init_particles()
+        self._killed = False
 
-        # Thread-safe output
         import threading
         self._lock = threading.Lock()
-        self._throttle = 0.0       # 0.0–1.0
+        self._throttle = 0.5       # 0.0=descent, 0.5=hover, 1.0=climb
         self._hand_found = False
-        self._latest_frame = None  # annotated BGR frame for PiP display
+        self._latest_frame = None
         self._running = False
 
     def process_frame(self):
-        """Grab one frame, run detection, update throttle. Returns (frame, hand_found, throttle_pct, dac_value) or None if no frame."""
+        """Grab one frame, run zone-based throttle. Returns (frame, hand_found, throttle_pct, dac_value) or None."""
         ret, frame = self._cap.read()
         if not ret:
             return None
@@ -336,97 +378,73 @@ class HandTracker:
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
         self._landmarker.detect_async(mp_image, int(time.time() * 1000))
 
+        # Find right hand only
         hand_found = False
-        raw_openness = 0.0
-
-        result = self._latest_result[0]
         landmarks = None
+        result = self._latest_result[0]
         if result and result.hand_landmarks:
-            # Only track the right hand (appears on right side of mirrored frame)
             for lm in result.hand_landmarks:
-                if lm[0].x >= 0.5:  # wrist on right half = user's right hand
+                if lm[0].x >= 0.5:
                     landmarks = lm
                     break
 
+        fist_state = False
+        palm_pos = None
+
         if landmarks is not None:
             hand_found = True
-            raw_openness = compute_raw_openness(landmarks)
+            fist_state = is_fist(landmarks)
+            palm_pos = palm_centroid(landmarks)
 
-            # Draw hand skeleton
+            # Draw skeleton with zone-appropriate color
+            skel_color = HOVER_COLOR if fist_state else (
+                CLIMB_COLOR if self._zone == "climb" else
+                DESCEND_COLOR if self._zone == "descend" else HOVER_COLOR)
             h, w = frame.shape[:2]
             for connection in HAND_CONNECTIONS:
-                start = landmarks[connection[0]]
-                end = landmarks[connection[1]]
-                pt1 = (int(start.x * w), int(start.y * h))
-                pt2 = (int(end.x * w), int(end.y * h))
-                cv2.line(frame, pt1, pt2, (0, 230, 180), 2, cv2.LINE_AA)
-            # Fingertips — larger bright dots
+                a, b = landmarks[connection[0]], landmarks[connection[1]]
+                pt1 = (int(a.x * w), int(a.y * h))
+                pt2 = (int(b.x * w), int(b.y * h))
+                cv2.line(frame, pt1, pt2, skel_color, 2, cv2.LINE_AA)
             for idx in FINGERTIPS:
                 lm = landmarks[idx]
                 cx, cy = int(lm.x * w), int(lm.y * h)
-                cv2.circle(frame, (cx, cy), 7, (0, 255, 100), -1, cv2.LINE_AA)
+                cv2.circle(frame, (cx, cy), 7, skel_color, -1, cv2.LINE_AA)
                 cv2.circle(frame, (cx, cy), 7, (255, 255, 255), 1, cv2.LINE_AA)
-            # Wrist — accent
             wx, wy = int(landmarks[WRIST].x * w), int(landmarks[WRIST].y * h)
             cv2.circle(frame, (wx, wy), 6, (255, 180, 0), -1, cv2.LINE_AA)
-            # Other joints — small dots
-            skip = set(FINGERTIPS + [WRIST])
-            for i, lm in enumerate(landmarks):
-                if i in skip:
-                    continue
-                cx, cy = int(lm.x * w), int(lm.y * h)
-                cv2.circle(frame, (cx, cy), 3, (200, 200, 200), -1, cv2.LINE_AA)
 
-        # Calibration
-        if self.cal_state == CAL_SAMPLING_CLOSED:
-            if hand_found:
-                self._cal_samples.append(raw_openness)
-            if len(self._cal_samples) >= CALIBRATION_FRAMES:
-                self._closed_baseline = sum(self._cal_samples) / len(self._cal_samples)
-                self._cal_samples.clear()
-                self.cal_state = CAL_WAITING_OPEN
-                print(f"  Closed baseline: {self._closed_baseline:.3f}")
-        elif self.cal_state == CAL_SAMPLING_OPEN:
-            if hand_found:
-                self._cal_samples.append(raw_openness)
-            if len(self._cal_samples) >= CALIBRATION_FRAMES:
-                self._open_baseline = sum(self._cal_samples) / len(self._cal_samples)
-                self._cal_samples.clear()
-                self.cal_state = CAL_DONE
-                print(f"  Open baseline: {self._open_baseline:.3f}")
-                print("  Calibration complete!")
-
-        # Compute throttle
-        # HS210 uses center-sprung throttle: NEUTRAL = hover, above = climb
-        # Fist / no hand → NEUTRAL (hover), open hand → DAC_MAX (full climb)
-        # Killswitch overrides to 0 (emergency descent)
-        if not hand_found or self.cal_state != CAL_DONE:
-            self._smoothed_openness = 0.0
+        # Compute DAC
+        if self._killed:
+            dac_value = 0
+            zone = "hover"
+            intensity = 0.0
+        elif not hand_found:
             dac_value = NEUTRAL
-            throttle_pct = 0.0
+            zone = "hover"
+            intensity = 0.0
+        elif fist_state:
+            dac_value = NEUTRAL
+            zone = "hover"
+            intensity = 0.0
         else:
-            spread = self._open_baseline - self._closed_baseline
-            if spread > 1e-6:
-                normalized = (raw_openness - self._closed_baseline) / spread
-            else:
-                normalized = 0.0
-            normalized = max(0.0, min(1.0, normalized))
+            dac_value, zone, intensity = compute_zone_dac(palm_pos[1], False)
 
-            if normalized < CLOSED_FIST_THRESHOLD:
-                self._smoothed_openness = 0.0
-            else:
-                self._smoothed_openness = EMA_ALPHA * normalized + (1 - EMA_ALPHA) * self._smoothed_openness
+        # EMA smooth
+        self._smoothed_dac = EMA_ALPHA * dac_value + (1 - EMA_ALPHA) * self._smoothed_dac
+        dac_value = int(self._smoothed_dac)
+        dac_value = max(0, min(DAC_MAX, dac_value))
+        throttle_pct = dac_value / DAC_MAX
 
-            dac_value = int(NEUTRAL + self._smoothed_openness * (DAC_MAX - NEUTRAL))
-            throttle_pct = self._smoothed_openness
+        self._zone = zone
+        self._intensity = intensity
 
-        # Calibration progress for UI
-        cal_progress = 0.0
-        if self.cal_state in (CAL_SAMPLING_CLOSED, CAL_SAMPLING_OPEN):
-            cal_progress = len(self._cal_samples) / CALIBRATION_FRAMES
+        # Animate particles
+        _step_particles(self._particles, zone, intensity)
 
-        # Draw full HUD overlay
-        draw_overlay(frame, throttle_pct, dac_value, hand_found, self.cal_state, cal_progress)
+        # Draw zone HUD
+        draw_zone_overlay(frame, dac_value, throttle_pct, hand_found, zone, intensity,
+                          self._particles, palm_pos, fist_state)
 
         with self._lock:
             self._throttle = throttle_pct
@@ -435,44 +453,25 @@ class HandTracker:
 
         return frame, hand_found, throttle_pct, dac_value
 
-    def start_calibration(self):
-        """Advance calibration state machine on C press."""
-        if self.cal_state == CAL_WAITING_CLOSED:
-            self.cal_state = CAL_SAMPLING_CLOSED
-            self._cal_samples.clear()
-            print("\n  Sampling fist...")
-        elif self.cal_state == CAL_WAITING_OPEN:
-            self.cal_state = CAL_SAMPLING_OPEN
-            self._cal_samples.clear()
-            print("  Sampling open hand...")
-        elif self.cal_state == CAL_DONE:
-            self.cal_state = CAL_WAITING_CLOSED
-            self._smoothed_openness = 0.0
-            print("\n  Re-calibrating...")
-
     def killswitch(self):
-        self._smoothed_openness = 0.0
+        self._smoothed_dac = 0.0
+        self._killed = True
         with self._lock:
             self._throttle = 0.0
 
     def get_throttle(self):
-        """Thread-safe read of current throttle (0.0–1.0) and hand_found."""
+        """Thread-safe. Returns (throttle_pct, hand_found). throttle_pct: 0.0=descent, 0.5=hover, 1.0=climb."""
         with self._lock:
             return self._throttle, self._hand_found
 
     def get_frame(self):
-        """Thread-safe read of latest annotated webcam frame (BGR numpy array or None)."""
         with self._lock:
             return self._latest_frame
 
     def get_status(self):
-        """Thread-safe read of full status for external HUD rendering.
-        Returns (throttle, hand_found, cal_state, cal_progress)."""
+        """Returns (throttle, hand_found, zone, intensity)."""
         with self._lock:
-            progress = 0.0
-            if self.cal_state in (CAL_SAMPLING_CLOSED, CAL_SAMPLING_OPEN):
-                progress = len(self._cal_samples) / CALIBRATION_FRAMES
-            return self._throttle, self._hand_found, self.cal_state, progress
+            return self._throttle, self._hand_found, self._zone, self._intensity
 
     def start_threaded(self):
         """Run hand tracking in a background thread with its own OpenCV window."""
@@ -537,9 +536,10 @@ def main():
 
     serial_status = "CONNECTED" if ser else "OFF (--no-serial)"
     joy_status = joy.get_name() if joy else "NONE"
-    print(f"Hand Throttle Phase 3 — Serial: {serial_status}, Joystick: {joy_status}")
-    print("Press C to calibrate, K to kill, Q/ESC to quit")
-    print("-" * 50)
+    print(f"Hand Throttle (Zone Control) — Serial: {serial_status}, Joystick: {joy_status}")
+    print("Fist = hover | Open hand top half = climb | Open hand bottom half = descend")
+    print("Right hand only. Press K to kill, Q/ESC to quit")
+    print("-" * 65)
 
     frame_idx = 0
     try:
@@ -569,8 +569,9 @@ def main():
 
             if frame_idx % 5 == 0:
                 serial_tag = " [TX]" if ser else ""
+                _, _, zone, intensity = tracker.get_status()
                 sys.stdout.write(
-                    f"\rT={dac_value:4d} Y={yaw_dac:4d} P={pitch_dac:4d} R={roll_dac:4d}{serial_tag}   "
+                    f"\rzone={zone:<8} i={intensity:.2f} T={dac_value:4d} Y={yaw_dac:4d} P={pitch_dac:4d} R={roll_dac:4d}{serial_tag}   "
                 )
                 sys.stdout.flush()
 
@@ -586,8 +587,6 @@ def main():
                     for _ in range(5):
                         send_to_pico(ser, 0, NEUTRAL, NEUTRAL, NEUTRAL)
                 print("\n  *** KILLSWITCH ***")
-            elif key == ord('c') or key == ord('C'):
-                tracker.start_calibration()
 
     finally:
         print("\nShutting down...")

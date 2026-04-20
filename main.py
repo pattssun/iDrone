@@ -63,10 +63,8 @@ def _draw_gl_text(text, x, y, win_w, win_h, size=24, color=(255, 255, 255), cent
     glDeleteTextures([tex])
 
 
-def draw_hand_hud(frame_bgr, win_w, win_h, cal_state, cal_progress, throttle, hand_found, joy_connected=False):
-    """Draw webcam PiP + calibration/status overlay on the simulator window."""
-    from hand_throttle import CAL_DONE, CAL_WAITING_CLOSED, CAL_SAMPLING_CLOSED
-    from hand_throttle import CAL_WAITING_OPEN, CAL_SAMPLING_OPEN
+def draw_hand_hud(frame_bgr, win_w, win_h, throttle, hand_found, joy_connected=False):
+    """Draw webcam PiP overlay on the simulator window."""
 
     # --- Enter 2D mode ---
     glMatrixMode(GL_PROJECTION)
@@ -149,89 +147,6 @@ def draw_hand_hud(frame_bgr, win_w, win_h, cal_state, cal_progress, throttle, ha
         if joy_connected:
             _draw_gl_text("JOYSTICK", x0 + 6, y0 + 4, win_w, win_h,
                            size=12, color=(0, 200, 255))
-
-    # =============================================
-    # CALIBRATION OVERLAY — big centered text
-    # =============================================
-    if cal_state != CAL_DONE:
-        cx = win_w // 2
-        # Semi-transparent dark banner
-        banner_h = 160
-        banner_y = win_h // 2 - banner_h // 2
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glColor4f(0.0, 0.0, 0.0, 0.7)
-        glBegin(GL_QUADS)
-        glVertex2f(0, banner_y)
-        glVertex2f(win_w, banner_y)
-        glVertex2f(win_w, banner_y + banner_h)
-        glVertex2f(0, banner_y + banner_h)
-        glEnd()
-
-        # Accent line top/bottom
-        if cal_state in (CAL_WAITING_CLOSED, CAL_SAMPLING_CLOSED):
-            accent = (0, 200, 255)
-        else:
-            accent = (0, 255, 180)
-        glColor3f(accent[0]/255, accent[1]/255, accent[2]/255)
-        glLineWidth(2.0)
-        glBegin(GL_LINES)
-        glVertex2f(win_w * 0.2, banner_y)
-        glVertex2f(win_w * 0.8, banner_y)
-        glVertex2f(win_w * 0.2, banner_y + banner_h)
-        glVertex2f(win_w * 0.8, banner_y + banner_h)
-        glEnd()
-
-        if cal_state == CAL_WAITING_CLOSED:
-            title = "HAND CALIBRATION"
-            instruction = "Make a FIST  —  then press  C"
-            hint = "Step 1 of 2"
-        elif cal_state == CAL_SAMPLING_CLOSED:
-            title = "SAMPLING FIST"
-            instruction = f"Hold still...  {int(cal_progress * 100)}%"
-            hint = ""
-        elif cal_state == CAL_WAITING_OPEN:
-            title = "HAND CALIBRATION"
-            instruction = "SPREAD fingers wide  —  then press  C"
-            hint = "Step 2 of 2"
-        elif cal_state == CAL_SAMPLING_OPEN:
-            title = "SAMPLING OPEN HAND"
-            instruction = f"Hold still...  {int(cal_progress * 100)}%"
-            hint = ""
-        else:
-            title = instruction = hint = ""
-
-        _draw_gl_text(title, cx, banner_y + banner_h - 35, win_w, win_h,
-                       size=32, color=accent, center=True)
-        _draw_gl_text(instruction, cx, banner_y + banner_h - 80, win_w, win_h,
-                       size=24, color=(255, 255, 255), center=True)
-        if hint:
-            _draw_gl_text(hint, cx, banner_y + banner_h - 120, win_w, win_h,
-                           size=16, color=(140, 140, 140), center=True)
-
-        # Progress bar during sampling
-        if cal_state in (CAL_SAMPLING_CLOSED, CAL_SAMPLING_OPEN) and cal_progress > 0:
-            bar_w = int(win_w * 0.4)
-            bar_h = 8
-            bar_x = cx - bar_w // 2
-            bar_y = banner_y + 15
-            # Background
-            glColor3f(0.2, 0.2, 0.2)
-            glBegin(GL_QUADS)
-            glVertex2f(bar_x, bar_y)
-            glVertex2f(bar_x + bar_w, bar_y)
-            glVertex2f(bar_x + bar_w, bar_y + bar_h)
-            glVertex2f(bar_x, bar_y + bar_h)
-            glEnd()
-            # Fill
-            fill_w = int(bar_w * cal_progress)
-            glColor3f(accent[0]/255, accent[1]/255, accent[2]/255)
-            glBegin(GL_QUADS)
-            glVertex2f(bar_x, bar_y)
-            glVertex2f(bar_x + fill_w, bar_y)
-            glVertex2f(bar_x + fill_w, bar_y + bar_h)
-            glVertex2f(bar_x, bar_y + bar_h)
-            glEnd()
 
     glDisable(GL_BLEND)
     glEnable(GL_DEPTH_TEST)
@@ -346,8 +261,6 @@ def main():
                     print("Drone reset.")
                 elif event.key == K_p:
                     print(f"Phone URL: {phone_server.url}")
-                elif hand_tracker and event.key == K_c:
-                    hand_tracker.start_calibration()
                 elif hand_tracker and event.key == K_k:
                     hand_tracker.killswitch()
                     print("KILLSWITCH")
@@ -425,9 +338,9 @@ def main():
 
         # --- Hand tracking overlay ---
         if hand_tracker:
-            throttle_val, hand_found_val, cal_st, cal_prog = hand_tracker.get_status()
+            throttle_val, hand_found_val, _, _ = hand_tracker.get_status()
             draw_hand_hud(hand_tracker.get_frame(), win_w, win_h,
-                          cal_st, cal_prog, throttle_val, hand_found_val,
+                          throttle_val, hand_found_val,
                           joy_connected=(joy is not None))
 
         # --- Swap buffers ---

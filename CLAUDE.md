@@ -2,14 +2,14 @@
 
 ## Hand Tracking Throttle Roadmap
 
-**Current status: Phase 3 complete** (as of 2026-04-16)
+**Current status: Zone Control complete** (as of 2026-04-20)
 
 | Phase | Status | Description |
 |-------|--------|-------------|
 | Phase 1 | Done | Standalone prototype — webcam + MediaPipe hand tracking, visual throttle output only |
-| Phase 2 | Done | Pico serial integration, `--no-serial` fallback, killswitch, simulator integration (`python main.py --hand` with webcam PiP + OpenGL calibration overlay, keyboard pitch/roll/yaw) |
-| Phase 3 | **Done** | Hybrid input — hand throttle + physical USB joystick for yaw/pitch/roll. Joystick axes via pygame with deadzone, `--no-joystick` fallback. All 4 channels sent to Pico. |
-| Phase 4 | **Next** | Tuning & UX polish — adjustable throttle cap (currently hardcoded 3000), throttle curve (linear/exponential), configurable EMA_ALPHA, deadzone, on-screen settings |
+| Phase 2 | Done | Pico serial integration, `--no-serial` fallback, killswitch, simulator integration |
+| Phase 3 | Done | Hybrid input — joystick for yaw/pitch/roll, `--no-joystick` fallback, all 4 channels to Pico |
+| Zone Control | **Done** | Zone-based hand throttle — fist=hover, open hand top half=climb, bottom half=descend. Gradient intensity by distance from midline. No calibration needed. Rich HUD with zone tints, drifting particles, direction arrow. Right-hand-only tracking. |
 
 ## Key Files
 
@@ -21,10 +21,22 @@
 
 ## Constants
 
-- NEUTRAL = 2048 (DAC midpoint for yaw/pitch/roll)
+- NEUTRAL = 2048 (DAC midpoint = hover for HS210)
 - DAC_MAX = 4095 (12-bit DAC ceiling)
-- THROTTLE_CAP = 3000 (max DAC value for hand throttle)
-- EMA_ALPHA = 0.3 (smoothing factor)
+- FIST_THRESHOLD = 1.3 (raw openness below this = fist = hover)
+- DEADZONE_HALF = 0.08 (±8% of frame height around midline = hover strip)
+- EMA_ALPHA = 0.3 (smoothing factor for DAC value)
 - JOYSTICK_DEADZONE = 0.08 (axis deadzone)
 - JOY_AXIS_ROLL/PITCH/YAW = 0/1/3 (default gamepad axis mapping)
 - Pico serial: 115200 baud, auto-detect "usbmodem" port, 500ms safety timeout
+
+## Zone Control Pipeline
+
+- Palm centroid (mean of 21 landmarks) determines position
+- Right hand only (wrist x >= 0.5 in mirrored frame, left hand ignored)
+- Fist anywhere → hover (NEUTRAL). No hand → hover (NEUTRAL)
+- Open hand top half → climb (intensity by distance from midline)
+- Open hand bottom half → descend (intensity by distance from midline)
+- Deadzone ±8% around midline → hover
+- EMA smoothing on DAC value for stable flight
+- No calibration needed — start flying immediately
