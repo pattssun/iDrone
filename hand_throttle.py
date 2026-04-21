@@ -245,19 +245,19 @@ def draw_hud_overlay(frame, dac_value, throttle_pct, hand_found, zone, fist_stat
     cv2.putText(overlay, f"DAC {dac_value}", (w - 150, 32), font, 0.6, (0, 255, 255), 2)
 
     # --- Throttle arc (bottom-right) ---
-    arc_cx = w - 80
-    arc_cy = h - 80
-    arc_r = 55
-    arc_t = 12
+    arc_cx = w - 190
+    arc_cy = h - 190
+    arc_r = 165
+    arc_t = 36
     cv2.ellipse(overlay, (arc_cx, arc_cy), (arc_r, arc_r), 0, 135, 405, (40, 40, 40), arc_t)
     if throttle_pct > 0.01:
         fill_angle = 135 + int(270 * throttle_pct)
         arc_color = CLIMB_COLOR if zone == "climb" else DESCEND_COLOR if zone == "descend" else HOVER_COLOR
         cv2.ellipse(overlay, (arc_cx, arc_cy), (arc_r, arc_r), 0, 135, fill_angle, arc_color, arc_t)
     pct_text = f"{int(throttle_pct * 100)}"
-    (tw, th), _ = cv2.getTextSize(pct_text, font, 1.2, 3)
-    cv2.putText(overlay, pct_text, (arc_cx - tw // 2, arc_cy + th // 3), font, 1.2, (255, 255, 255), 3)
-    cv2.putText(overlay, "%", (arc_cx - 8, arc_cy + th // 3 + 22), font, 0.5, (180, 180, 180), 1)
+    (tw, th), _ = cv2.getTextSize(pct_text, font, 3.6, 8)
+    cv2.putText(overlay, pct_text, (arc_cx - tw // 2, arc_cy + th // 3), font, 3.6, (255, 255, 255), 8)
+    cv2.putText(overlay, "%", (arc_cx - 20, arc_cy + th // 3 + 55), font, 1.5, (180, 180, 180), 3)
 
     # Blend
     cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
@@ -438,7 +438,7 @@ class HandTracker:
                 pt1 = (int(a.x * w), int(a.y * h))
                 pt2 = (int(b.x * w), int(b.y * h))
                 cv2.line(frame, pt1, pt2, skel_color, 2, cv2.LINE_AA)
-            for idx in ALL_TIPS:
+            for idx in ALL_TIPS + [4]:
                 lm = landmarks[idx]
                 cx, cy = int(lm.x * w), int(lm.y * h)
                 cv2.circle(frame, (cx, cy), 7, skel_color, -1, cv2.LINE_AA)
