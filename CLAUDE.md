@@ -9,7 +9,7 @@
 | Phase 1 | Done | Standalone prototype — webcam + MediaPipe hand tracking, visual throttle output only |
 | Phase 2 | Done | Pico serial integration, `--no-serial` fallback, killswitch, simulator integration |
 | Phase 3 | Done | Hybrid input — joystick for yaw/pitch/roll, `--no-joystick` fallback, all 4 channels to Pico |
-| Zone Control | **Done** | Zone-based hand throttle — fist=hover, open hand top half=climb, bottom half=descend. Gradient intensity by distance from midline. No calibration needed. Rich HUD with zone tints, drifting particles, direction arrow. Right-hand-only tracking. |
+| Zone Control | **Done** | Zone-based hand throttle — fist=hover, open hand top half=full climb, bottom half=full descend. Binary: zone membership alone determines throttle (no gradient). EMA smoothing (~300ms) softens motor command. No calibration needed. Rich HUD with zone tints, drifting particles, direction arrow. Right-hand-only tracking. |
 
 ## Key Files
 
@@ -35,8 +35,8 @@
 - Palm centroid (mean of 21 landmarks) determines position
 - Right hand only (wrist x >= 0.5 in mirrored frame, left hand ignored)
 - Fist anywhere → hover (NEUTRAL). No hand → hover (NEUTRAL)
-- Open hand top half → climb (intensity by distance from midline)
-- Open hand bottom half → descend (intensity by distance from midline)
+- Open hand top half → full climb (DAC_MAX)
+- Open hand bottom half → full descend (DAC=0)
 - Deadzone ±8% around midline → hover
-- EMA smoothing on DAC value for stable flight
+- EMA smoothing on DAC value softens the binary input into a ~300ms ramp
 - No calibration needed — start flying immediately

@@ -98,7 +98,9 @@ def is_fist(landmarks):
 
 def compute_zone_dac(palm_cy, fist):
     """Map palm y-position + fist state to (dac_value, zone, intensity).
-    zone: 'climb'|'descend'|'hover'|'deadzone'. intensity: 0..1."""
+    Binary: top half = full climb, bottom half = full descend, deadzone = hover.
+    EMA smoothing in the caller softens the motor command.
+    zone: 'climb'|'descend'|'hover'|'deadzone'. intensity: 0 or 1."""
     if fist:
         return NEUTRAL, "hover", 0.0
 
@@ -106,13 +108,9 @@ def compute_zone_dac(palm_cy, fist):
     bot_edge = 0.5 + DEADZONE_HALF
 
     if palm_cy < top_edge:
-        intensity = min(1.0, (top_edge - palm_cy) / top_edge)
-        dac = int(NEUTRAL + intensity * (DAC_MAX - NEUTRAL))
-        return min(DAC_MAX, dac), "climb", intensity
+        return DAC_MAX, "climb", 1.0
     elif palm_cy > bot_edge:
-        intensity = min(1.0, (palm_cy - bot_edge) / (1.0 - bot_edge))
-        dac = int(NEUTRAL - intensity * NEUTRAL)
-        return max(0, dac), "descend", intensity
+        return 0, "descend", 1.0
     else:
         return NEUTRAL, "deadzone", 0.0
 
