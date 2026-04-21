@@ -13,7 +13,7 @@
 
 ## Key Files
 
-- `hand_throttle.py` — Hand tracking + joystick + serial sender. `HandTracker` class can run standalone or threaded from `main.py`
+- `hand_throttle.py` — Hand tracking + keyboard/joystick + serial sender. `HandTracker` class can run standalone or threaded from `main.py`. Keyboard fallback: A/D=yaw, arrows=pitch/roll (tap-and-decay)
 - `main.py --hand` — Simulator with hand throttle. Joystick for pitch/roll/yaw (keyboard fallback if no joystick)
 - `pico/pico_dac_controller.py` — Pico firmware (DO NOT MODIFY). Protocol: `throttle,yaw,pitch,roll\n`
 - `pico/mac_dac_sender.py` — Keyboard debug tool for DAC (standalone, not part of hand tracking)

@@ -46,6 +46,16 @@ JOY_AXIS_PITCH = 1    # left stick Y
 JOY_AXIS_YAW = 3      # right stick X
 JOYSTICK_DEADZONE = 0.08
 
+# Keyboard control (fallback when no joystick)
+KB_STEP = 0.5         # axis deflection per key tap
+KB_DECAY = 0.85       # per-frame decay toward neutral
+ARROW_KEYS = {
+    63232: 'up', 65362: 'up',      # macOS, Linux
+    63233: 'down', 65364: 'down',
+    63234: 'left', 65361: 'left',
+    63235: 'right', 65363: 'right',
+}
+
 # Landmark indices
 WRIST = 0
 FINGERTIPS = [8, 12, 16, 20]   # index, middle, ring, pinky
@@ -313,13 +323,11 @@ def draw_zone_overlay(frame, dac_value, throttle_pct, hand_found, zone, intensit
     cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
 
 
-def draw_joystick_overlay(frame, yaw_dac, pitch_dac, roll_dac, joy_connected):
-    """Draw joystick channel readouts on the webcam frame."""
-    if not joy_connected:
-        return
+def draw_input_overlay(frame, yaw_dac, pitch_dac, roll_dac, label="KEYBOARD"):
+    """Draw yaw/pitch/roll channel readouts on the webcam frame."""
     font = cv2.FONT_HERSHEY_SIMPLEX
     y0 = 55
-    cv2.putText(frame, "JOYSTICK", (15, y0), font, 0.45, (0, 200, 255), 1)
+    cv2.putText(frame, label, (15, y0), font, 0.45, (0, 200, 255), 1)
     cv2.putText(frame, f"YAW  {yaw_dac:4d}", (15, y0 + 18), font, 0.4, (180, 180, 180), 1)
     cv2.putText(frame, f"PTCH {pitch_dac:4d}", (15, y0 + 36), font, 0.4, (180, 180, 180), 1)
     cv2.putText(frame, f"ROLL {roll_dac:4d}", (15, y0 + 54), font, 0.4, (180, 180, 180), 1)
@@ -528,16 +536,22 @@ def main():
     if not args.no_joystick:
         joy = init_joystick()
         if joy is None:
-            print("No joystick found — yaw/pitch/roll will stay at neutral")
+            print("No joystick found — using keyboard for yaw/pitch/roll")
 
     tracker = HandTracker()
 
     serial_status = "CONNECTED" if ser else "OFF (--no-serial)"
-    joy_status = joy.get_name() if joy else "NONE"
-    print(f"Hand Throttle (Zone Control) — Serial: {serial_status}, Joystick: {joy_status}")
+    input_mode = joy.get_name() if joy else "KEYBOARD"
+    print(f"Hand Throttle (Zone Control) — Serial: {serial_status}, Input: {input_mode}")
     print("Fist = hover | Open hand top half = climb | Open hand bottom half = descend")
-    print("Right hand only. Press K to kill, Q/ESC to quit")
+    if not joy:
+        print("A/D = yaw | Up/Down = pitch | Left/Right = roll")
+    print("K = killswitch | Q/ESC = quit")
     print("-" * 65)
+
+    kb_yaw = 0.0
+    kb_pitch = 0.0
+    kb_roll = 0.0
 
     frame_idx = 0
     try:
@@ -547,22 +561,29 @@ def main():
                 break
             frame, hand_found, throttle_pct, dac_value = result
 
-            # Read joystick for yaw/pitch/roll
-            yaw_dac = NEUTRAL
-            pitch_dac = NEUTRAL
-            roll_dac = NEUTRAL
+            # Decay keyboard axes each frame
+            kb_yaw *= KB_DECAY
+            kb_pitch *= KB_DECAY
+            kb_roll *= KB_DECAY
+
+            # Read yaw/pitch/roll from joystick or keyboard
             if joy:
                 yaw_dac, pitch_dac, roll_dac = read_joystick(joy)
+            else:
+                yaw_dac = axis_to_dac(kb_yaw)
+                pitch_dac = axis_to_dac(kb_pitch)
+                roll_dac = axis_to_dac(kb_roll)
 
             if ser:
                 send_to_pico(ser, dac_value, yaw_dac, pitch_dac, roll_dac)
 
-            # Draw joystick overlay on frame
-            draw_joystick_overlay(frame, yaw_dac, pitch_dac, roll_dac, joy is not None)
+            # Draw input overlay on frame
+            draw_input_overlay(frame, yaw_dac, pitch_dac, roll_dac,
+                               label="JOYSTICK" if joy else "KEYBOARD")
 
             # Serial badge
             if ser:
-                cv2.putText(frame, "SERIAL", (frame.shape[1] - 100, 32),
+                cv2.putText(frame, "SERIAL", (frame.shape[1] - 100, 52),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
             if frame_idx % 5 == 0:
@@ -576,15 +597,31 @@ def main():
             cv2.imshow("Hand Throttle", frame)
             frame_idx += 1
 
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q') or key == 27:
+            key = cv2.waitKeyEx(1)
+            key_chr = key & 0xFF
+            arrow = ARROW_KEYS.get(key)
+
+            if key_chr == ord('q') or key_chr == 27:
                 break
-            elif key == ord('k') or key == ord('K'):
+            elif key_chr == ord('k') or key_chr == ord('K'):
                 tracker.killswitch()
                 if ser:
                     for _ in range(5):
                         send_to_pico(ser, 0, NEUTRAL, NEUTRAL, NEUTRAL)
                 print("\n  *** KILLSWITCH ***")
+            elif not joy:
+                if key_chr == ord('a'):
+                    kb_yaw = max(-1.0, kb_yaw - KB_STEP)
+                elif key_chr == ord('d'):
+                    kb_yaw = min(1.0, kb_yaw + KB_STEP)
+                elif arrow == 'up':
+                    kb_pitch = min(1.0, kb_pitch + KB_STEP)
+                elif arrow == 'down':
+                    kb_pitch = max(-1.0, kb_pitch - KB_STEP)
+                elif arrow == 'left':
+                    kb_roll = max(-1.0, kb_roll - KB_STEP)
+                elif arrow == 'right':
+                    kb_roll = min(1.0, kb_roll + KB_STEP)
 
     finally:
         print("\nShutting down...")
