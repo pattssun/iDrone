@@ -2,14 +2,15 @@
 
 ## Hand Tracking Throttle Roadmap
 
-**Current status: Zone Control complete** (as of 2026-04-20)
+**Current status: Finger Direction Control complete** (as of 2026-04-21)
 
 | Phase | Status | Description |
 |-------|--------|-------------|
 | Phase 1 | Done | Standalone prototype — webcam + MediaPipe hand tracking, visual throttle output only |
 | Phase 2 | Done | Pico serial integration, `--no-serial` fallback, killswitch, simulator integration |
 | Phase 3 | Done | Hybrid input — joystick for yaw/pitch/roll, `--no-joystick` fallback, all 4 channels to Pico |
-| Zone Control | **Done** | Zone-based hand throttle — fist=hover, open hand top half=full climb, bottom half=full descend. Binary: zone membership alone determines throttle (no gradient). EMA smoothing (~300ms) softens motor command. No calibration needed. Rich HUD with zone tints, drifting particles, direction arrow. Right-hand-only tracking. |
+| Zone Control | Done | Zone-based hand throttle (replaced by Finger Direction) |
+| Finger Direction | **Done** | Finger direction throttle — all 5 fingers pointing up=climb, down=descend, fist=hover. Binary: unanimous finger direction determines throttle. Neon ray beams shoot from fingertips with pulsing glow. EMA smoothing (~300ms). Right-hand-only tracking. |
 
 ## Key Files
 
@@ -24,19 +25,21 @@
 - NEUTRAL = 2048 (DAC midpoint = hover for HS210)
 - DAC_MAX = 4095 (12-bit DAC ceiling)
 - FIST_THRESHOLD = 1.3 (raw openness below this = fist = hover)
-- DEADZONE_HALF = 0.08 (±8% of frame height around midline = hover strip)
+- FINGER_ANGLE_THRESHOLD = 45 (degrees from vertical for up/down detection)
 - EMA_ALPHA = 0.3 (smoothing factor for DAC value)
 - JOYSTICK_DEADZONE = 0.08 (axis deadzone)
 - JOY_AXIS_ROLL/PITCH/YAW = 0/1/3 (default gamepad axis mapping)
+- RAY_PULSE_HZ = 2.0 (glow oscillation frequency)
 - Pico serial: 115200 baud, auto-detect "usbmodem" port, 500ms safety timeout
 
-## Zone Control Pipeline
+## Finger Direction Pipeline
 
-- Palm centroid (mean of 21 landmarks) determines position
 - Right hand only (wrist x >= 0.5 in mirrored frame, left hand ignored)
 - Fist anywhere → hover (NEUTRAL). No hand → hover (NEUTRAL)
-- Open hand top half → full climb (DAC_MAX)
-- Open hand bottom half → full descend (DAC=0)
-- Deadzone ±8% around midline → hover
+- For each of 5 fingers: vector from base (CMC for thumb, MCP for others) to fingertip
+- "Pointing up" = angle from vertical < 45°. "Pointing down" = angle from downward vertical < 45°
+- All 5 pointing up → climb (DAC_MAX). All 5 pointing down → descend (DAC=0)
+- Any disagreement → hover (NEUTRAL)
 - EMA smoothing on DAC value softens the binary input into a ~300ms ramp
+- Neon ray beams from each fingertip in pointing direction (green=climb, red=descend, gray=hover)
 - No calibration needed — start flying immediately

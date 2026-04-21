@@ -1,7 +1,7 @@
 """
-Hand Tracking Throttle — Zone Control
-Webcam divided into top/bottom zones. Fist = hover. Open hand in top half
-= climb, bottom half = descend. Intensity by distance from midline.
+Hand Tracking Throttle — Finger Direction Control
+All fingers pointing up = climb. All pointing down = descend.
+Fist = hover. Neon ray beams shoot from fingertips.
 No calibration needed — start flying immediately.
 
 Controls:
@@ -24,21 +24,32 @@ import sys
 import time
 
 import cv2
+import numpy as np
 import mediapipe as mp
 from mediapipe.tasks.python import vision
 
 # --- Constants ---
-import random
 
 EMA_ALPHA = 0.3
 NEUTRAL = 2048
 DAC_MAX = 4095
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "hand_landmarker.task")
 
-# Zone control
-FIST_THRESHOLD = 1.3      # raw openness below this = fist → hover
-DEADZONE_HALF = 0.08      # ±8% of frame height around midline
-PARTICLE_COUNT = 50        # drifting HUD particles
+# Gesture detection
+FIST_THRESHOLD = 1.3
+FINGER_ANGLE_THRESHOLD = 45  # degrees from vertical
+
+# Ray visuals (BGR)
+RAY_CORE_WIDTH = 2
+RAY_GLOW_WIDTH = 12
+RAY_PULSE_HZ = 2.0
+FLARE_RADIUS = 10
+RAY_CORE_CLIMB = (0, 255, 120)
+RAY_GLOW_CLIMB = (0, 180, 60)
+RAY_CORE_DESCEND = (80, 120, 255)
+RAY_GLOW_DESCEND = (40, 60, 200)
+RAY_CORE_IDLE = (120, 120, 120)
+RAY_GLOW_IDLE = (60, 60, 60)
 
 # Joystick axis mapping (common gamepad layout)
 JOY_AXIS_ROLL = 0     # left stick X
@@ -58,19 +69,20 @@ ARROW_KEYS = {
 
 # Landmark indices
 WRIST = 0
-FINGERTIPS = [8, 12, 16, 20]   # index, middle, ring, pinky
-MCPS = [5, 9, 13, 17]
+FIST_TIPS = [8, 12, 16, 20]       # index, middle, ring, pinky (for fist detection)
+FIST_MCPS = [5, 9, 13, 17]
+ALL_TIPS = [4, 8, 12, 16, 20]     # thumb, index, middle, ring, pinky
+ALL_BASES = [1, 5, 9, 13, 17]     # CMC for thumb, MCPs for others
 
 # Hand skeleton connections for drawing
 HAND_CONNECTIONS = [
-    (0,1),(1,2),(2,3),(3,4),        # thumb
-    (0,5),(5,6),(6,7),(7,8),        # index
-    (0,9),(9,10),(10,11),(11,12),   # middle  (wrist to MCP9 added)
-    (0,13),(13,14),(14,15),(15,16), # ring    (wrist to MCP13 added)
-    (0,17),(17,18),(18,19),(19,20), # pinky
-    (5,9),(9,13),(13,17),           # palm
+    (0, 1), (1, 2), (2, 3), (3, 4),        # thumb
+    (0, 5), (5, 6), (6, 7), (7, 8),        # index
+    (0, 9), (9, 10), (10, 11), (11, 12),   # middle
+    (0, 13), (13, 14), (14, 15), (15, 16), # ring
+    (0, 17), (17, 18), (18, 19), (19, 20), # pinky
+    (5, 9), (9, 13), (13, 17),             # palm
 ]
-
 
 # Zone colors (BGR)
 CLIMB_COLOR = (0, 200, 80)
@@ -79,15 +91,13 @@ HOVER_COLOR = (60, 220, 220)
 
 
 def dist(a, b):
-    """Euclidean distance between two landmarks."""
     return math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)
 
 
 def compute_raw_openness(landmarks):
-    """Average ratio of fingertip-to-wrist / MCP-to-wrist across 4 fingers."""
     wrist = landmarks[WRIST]
     ratios = []
-    for tip_idx, mcp_idx in zip(FINGERTIPS, MCPS):
+    for tip_idx, mcp_idx in zip(FIST_TIPS, FIST_MCPS):
         tip_dist = dist(landmarks[tip_idx], wrist)
         mcp_dist = dist(landmarks[mcp_idx], wrist)
         if mcp_dist > 1e-6:
@@ -96,7 +106,6 @@ def compute_raw_openness(landmarks):
 
 
 def palm_centroid(landmarks):
-    """Mean x, y of all 21 landmarks in normalized [0,1] coords."""
     cx = sum(lm.x for lm in landmarks) / len(landmarks)
     cy = sum(lm.y for lm in landmarks) / len(landmarks)
     return cx, cy
@@ -106,174 +115,105 @@ def is_fist(landmarks):
     return compute_raw_openness(landmarks) < FIST_THRESHOLD
 
 
-def compute_zone_dac(palm_cy, fist):
-    """Map palm y-position + fist state to (dac_value, zone, intensity).
-    Binary: top half = full climb, bottom half = full descend, deadzone = hover.
-    EMA smoothing in the caller softens the motor command.
-    zone: 'climb'|'descend'|'hover'|'deadzone'. intensity: 0 or 1."""
-    if fist:
-        return NEUTRAL, "hover", 0.0
+def fingers_direction(landmarks):
+    """Check if all 5 fingers point up, all point down, or mixed.
+    Returns 'up', 'down', or 'mixed'."""
+    threshold_rad = math.radians(FINGER_ANGLE_THRESHOLD)
+    ups = 0
+    downs = 0
 
-    top_edge = 0.5 - DEADZONE_HALF
-    bot_edge = 0.5 + DEADZONE_HALF
+    for tip_idx, base_idx in zip(ALL_TIPS, ALL_BASES):
+        tip = landmarks[tip_idx]
+        base = landmarks[base_idx]
+        dx = tip.x - base.x
+        dy = tip.y - base.y
+        length = math.sqrt(dx * dx + dy * dy)
+        if length < 1e-6:
+            return "mixed"
 
-    if palm_cy < top_edge:
+        angle_from_up = math.atan2(abs(dx), -dy)
+        angle_from_down = math.atan2(abs(dx), dy)
+
+        if angle_from_up < threshold_rad:
+            ups += 1
+        elif angle_from_down < threshold_rad:
+            downs += 1
+
+    if ups == 5:
+        return "up"
+    if downs == 5:
+        return "down"
+    return "mixed"
+
+
+def compute_direction_dac(direction):
+    """Map finger direction to (dac_value, zone, intensity)."""
+    if direction == "up":
         return DAC_MAX, "climb", 1.0
-    elif palm_cy > bot_edge:
+    elif direction == "down":
         return 0, "descend", 1.0
     else:
-        return NEUTRAL, "deadzone", 0.0
+        return NEUTRAL, "hover", 0.0
 
 
-def _init_particles():
-    """Create a pool of particles for the drifting effect."""
-    return [{"x": random.random(), "y": random.random(), "r": random.uniform(1.5, 3.5)}
-            for _ in range(PARTICLE_COUNT)]
+def _ray_segments(landmarks, w, h):
+    """Precompute ray start/end points for all 5 fingers."""
+    rays = []
+    for tip_idx, base_idx in zip(ALL_TIPS, ALL_BASES):
+        tip = landmarks[tip_idx]
+        base = landmarks[base_idx]
+        tx, ty = int(tip.x * w), int(tip.y * h)
+        bx, by = int(base.x * w), int(base.y * h)
+        dx, dy = tx - bx, ty - by
+        length = math.sqrt(dx * dx + dy * dy)
+        if length < 1:
+            continue
+        ndx, ndy = dx / length, dy / length
+
+        t_x = ((w - tx) / ndx) if ndx > 0 else ((-tx / ndx) if ndx < 0 else float('inf'))
+        t_y = ((h - ty) / ndy) if ndy > 0 else ((-ty / ndy) if ndy < 0 else float('inf'))
+        ray_t = max(0, min(t_x, t_y))
+
+        ex, ey = int(tx + ndx * ray_t), int(ty + ndy * ray_t)
+        rays.append(((tx, ty), (ex, ey)))
+    return rays
 
 
-def _step_particles(particles, zone, intensity, dt=0.033):
-    """Advance particle positions. Drift up in top zone, down in bottom zone."""
-    base_speed = intensity * 0.6
-    for p in particles:
-        if zone == "climb":
-            p["y"] -= base_speed * dt * random.uniform(0.5, 1.5)
-            if p["y"] < 0:
-                p["y"] = 1.0
-                p["x"] = random.random()
-        elif zone == "descend":
-            p["y"] += base_speed * dt * random.uniform(0.5, 1.5)
-            if p["y"] > 1:
-                p["y"] = 0.0
-                p["x"] = random.random()
+def draw_finger_rays(frame, landmarks, zone, t):
+    """Draw neon ray beams from all 5 fingertips in their pointing direction."""
+    h, w = frame.shape[:2]
+
+    if zone == "climb":
+        core_color, glow_color = RAY_CORE_CLIMB, RAY_GLOW_CLIMB
+    elif zone == "descend":
+        core_color, glow_color = RAY_CORE_DESCEND, RAY_GLOW_DESCEND
+    else:
+        core_color, glow_color = RAY_CORE_IDLE, RAY_GLOW_IDLE
+
+    pulse = 0.5 + 0.5 * math.sin(t * 2 * math.pi * RAY_PULSE_HZ)
+    glow_alpha = 0.25 + 0.35 * pulse
+
+    rays = _ray_segments(landmarks, w, h)
+
+    # Glow pass (blended overlay)
+    overlay = frame.copy()
+    for start, end in rays:
+        cv2.line(overlay, start, end, glow_color, RAY_GLOW_WIDTH, cv2.LINE_AA)
+        cv2.circle(overlay, start, FLARE_RADIUS, glow_color, -1, cv2.LINE_AA)
+    cv2.addWeighted(overlay, glow_alpha, frame, 1 - glow_alpha, 0, frame)
+
+    # Core pass (full brightness, drawn directly)
+    for start, end in rays:
+        cv2.line(frame, start, end, core_color, RAY_CORE_WIDTH, cv2.LINE_AA)
+        cv2.circle(frame, start, 5, core_color, -1, cv2.LINE_AA)
+        cv2.circle(frame, start, 7, (255, 255, 255), 1, cv2.LINE_AA)
 
 
-def init_joystick():
-    """Initialize pygame joystick subsystem, return first joystick or None."""
-    import pygame
-    if not pygame.get_init():
-        pygame.init()
-    pygame.joystick.init()
-    if pygame.joystick.get_count() == 0:
-        return None
-    joy = pygame.joystick.Joystick(0)
-    joy.init()
-    print(f"Joystick: {joy.get_name()} ({joy.get_numaxes()} axes, {joy.get_numbuttons()} buttons)")
-    return joy
-
-
-def apply_deadzone(value, deadzone=JOYSTICK_DEADZONE):
-    """Apply deadzone and rescale axis value from -1..1."""
-    if abs(value) < deadzone:
-        return 0.0
-    sign = 1.0 if value > 0 else -1.0
-    return sign * (abs(value) - deadzone) / (1.0 - deadzone)
-
-
-def axis_to_dac(value):
-    """Map axis (-1..1) to DAC (0..4095) centered on NEUTRAL."""
-    clamped = max(-1.0, min(1.0, value))
-    return max(0, min(DAC_MAX, int(NEUTRAL + clamped * NEUTRAL)))
-
-
-def find_pico_port():
-    """Auto-detect Pico serial port."""
-    import serial.tools.list_ports
-    for port in serial.tools.list_ports.comports():
-        if "usbmodem" in port.device.lower() or "pico" in port.description.lower():
-            return port.device
-    print("Available ports:")
-    for port in serial.tools.list_ports.comports():
-        print(f"  {port.device} - {port.description}")
-    return None
-
-
-def connect_pico():
-    """Connect to Pico, wait for READY signal."""
-    import serial
-    port_name = find_pico_port()
-    if port_name is None:
-        print("Could not auto-detect Pico. Enter port manually:")
-        port_name = input("> ").strip()
-
-    print(f"Connecting to {port_name}...")
-    ser = serial.Serial(port_name, 115200, timeout=0.1)
-    time.sleep(1)
-
-    print("Waiting for Pico...")
-    start = time.time()
-    while time.time() - start < 5:
-        line = ser.readline().decode().strip()
-        if line == "READY":
-            print("Pico is ready!")
-            return ser
-        if line:
-            print(f"  Pico: {line}")
-
-    print("Warning: didn't get READY signal, continuing anyway...")
-    return ser
-
-
-def send_to_pico(ser, throttle_dac, yaw_dac=NEUTRAL, pitch_dac=NEUTRAL, roll_dac=NEUTRAL):
-    """Send throttle,yaw,pitch,roll to Pico. Drain read buffer."""
-    cmd = f"{throttle_dac},{yaw_dac},{pitch_dac},{roll_dac}\n"
-    ser.write(cmd.encode())
-    ser.flush()
-    while ser.in_waiting:
-        ser.read(ser.in_waiting)
-
-
-def draw_zone_overlay(frame, dac_value, throttle_pct, hand_found, zone, intensity,
-                      particles, palm_pos=None, fist_state=False):
-    """Draw zone-based HUD: tints, midline, particles, arrow, status, DAC arc."""
+def draw_hud_overlay(frame, dac_value, throttle_pct, hand_found, zone, fist_state):
+    """Draw HUD: status badge, DAC readout, throttle arc."""
     h, w = frame.shape[:2]
     overlay = frame.copy()
     font = cv2.FONT_HERSHEY_SIMPLEX
-    mid_y = h // 2
-    dz_top = int(h * (0.5 - DEADZONE_HALF))
-    dz_bot = int(h * (0.5 + DEADZONE_HALF))
-
-    # --- Zone tints ---
-    green_tint = overlay[:dz_top].copy()
-    green_tint[:] = (green_tint * 0.85 + [0, 25, 0]).clip(0, 255).astype("uint8")
-    overlay[:dz_top] = green_tint
-    red_tint = overlay[dz_bot:].copy()
-    red_tint[:] = (red_tint * 0.85 + [0, 0, 25]).clip(0, 255).astype("uint8")
-    overlay[dz_bot:] = red_tint
-
-    # Midline
-    cv2.line(overlay, (0, mid_y), (w, mid_y), (255, 255, 255), 1, cv2.LINE_AA)
-    # Deadzone boundary dashes
-    for x in range(0, w, 20):
-        cv2.line(overlay, (x, dz_top), (min(x + 10, w), dz_top), (120, 120, 120), 1)
-        cv2.line(overlay, (x, dz_bot), (min(x + 10, w), dz_bot), (120, 120, 120), 1)
-
-    # --- Drifting particles ---
-    for p in particles:
-        px = int(p["x"] * w)
-        py = int(p["y"] * h)
-        pr = int(p["r"])
-        if zone == "climb" and p["y"] < 0.5:
-            brightness = min(255, int(80 + 175 * intensity))
-            color = (0, brightness, int(brightness * 0.4))
-        elif zone == "descend" and p["y"] > 0.5:
-            brightness = min(255, int(80 + 175 * intensity))
-            color = (int(brightness * 0.3), int(brightness * 0.3), brightness)
-        else:
-            color = (50, 50, 50)
-        cv2.circle(overlay, (px, py), pr, color, -1, cv2.LINE_AA)
-
-    # --- Direction arrow (near hand) ---
-    if palm_pos and zone in ("climb", "descend"):
-        ax = int(palm_pos[0] * w) + 60
-        ay = int(palm_pos[1] * h)
-        arrow_size = int(15 + 25 * intensity)
-        arrow_color = CLIMB_COLOR if zone == "climb" else DESCEND_COLOR
-        if zone == "climb":
-            pts = [(ax, ay - arrow_size), (ax - arrow_size // 2, ay), (ax + arrow_size // 2, ay)]
-        else:
-            pts = [(ax, ay + arrow_size), (ax - arrow_size // 2, ay), (ax + arrow_size // 2, ay)]
-        import numpy as np
-        cv2.fillPoly(overlay, [np.array(pts)], arrow_color)
 
     # --- Status badge (top-left) ---
     if not hand_found:
@@ -324,13 +264,99 @@ def draw_zone_overlay(frame, dac_value, throttle_pct, hand_found, zone, intensit
 
 
 def draw_input_overlay(frame, yaw_dac, pitch_dac, roll_dac, label="KEYBOARD"):
-    """Draw yaw/pitch/roll channel readouts on the webcam frame."""
     font = cv2.FONT_HERSHEY_SIMPLEX
     y0 = 55
     cv2.putText(frame, label, (15, y0), font, 0.45, (0, 200, 255), 1)
     cv2.putText(frame, f"YAW  {yaw_dac:4d}", (15, y0 + 18), font, 0.4, (180, 180, 180), 1)
     cv2.putText(frame, f"PTCH {pitch_dac:4d}", (15, y0 + 36), font, 0.4, (180, 180, 180), 1)
     cv2.putText(frame, f"ROLL {roll_dac:4d}", (15, y0 + 54), font, 0.4, (180, 180, 180), 1)
+
+
+def init_joystick():
+    import pygame
+    if not pygame.get_init():
+        pygame.init()
+    pygame.joystick.init()
+    if pygame.joystick.get_count() == 0:
+        return None
+    joy = pygame.joystick.Joystick(0)
+    joy.init()
+    print(f"Joystick: {joy.get_name()} ({joy.get_numaxes()} axes, {joy.get_numbuttons()} buttons)")
+    return joy
+
+
+def apply_deadzone(value, deadzone=JOYSTICK_DEADZONE):
+    if abs(value) < deadzone:
+        return 0.0
+    sign = 1.0 if value > 0 else -1.0
+    return sign * (abs(value) - deadzone) / (1.0 - deadzone)
+
+
+def axis_to_dac(value):
+    clamped = max(-1.0, min(1.0, value))
+    return max(0, min(DAC_MAX, int(NEUTRAL + clamped * NEUTRAL)))
+
+
+def find_pico_port():
+    import serial.tools.list_ports
+    for port in serial.tools.list_ports.comports():
+        if "usbmodem" in port.device.lower() or "pico" in port.description.lower():
+            return port.device
+    print("Available ports:")
+    for port in serial.tools.list_ports.comports():
+        print(f"  {port.device} - {port.description}")
+    return None
+
+
+def connect_pico():
+    import serial
+    port_name = find_pico_port()
+    if port_name is None:
+        print("Could not auto-detect Pico. Enter port manually:")
+        port_name = input("> ").strip()
+
+    print(f"Connecting to {port_name}...")
+    ser = serial.Serial(port_name, 115200, timeout=0.1)
+    time.sleep(1)
+
+    print("Waiting for Pico...")
+    start = time.time()
+    while time.time() - start < 5:
+        line = ser.readline().decode().strip()
+        if line == "READY":
+            print("Pico is ready!")
+            return ser
+        if line:
+            print(f"  Pico: {line}")
+
+    print("Warning: didn't get READY signal, continuing anyway...")
+    return ser
+
+
+def send_to_pico(ser, throttle_dac, yaw_dac=NEUTRAL, pitch_dac=NEUTRAL, roll_dac=NEUTRAL):
+    cmd = f"{throttle_dac},{yaw_dac},{pitch_dac},{roll_dac}\n"
+    ser.write(cmd.encode())
+    ser.flush()
+    while ser.in_waiting:
+        ser.read(ser.in_waiting)
+
+
+def read_joystick(joy):
+    import pygame
+    pygame.event.pump()
+
+    raw_roll = joy.get_axis(JOY_AXIS_ROLL)
+    raw_pitch = joy.get_axis(JOY_AXIS_PITCH)
+    raw_yaw = 0.0
+    if joy.get_numaxes() > JOY_AXIS_YAW:
+        raw_yaw = joy.get_axis(JOY_AXIS_YAW)
+    elif joy.get_numaxes() > 2:
+        raw_yaw = joy.get_axis(2)
+
+    roll_dac = axis_to_dac(apply_deadzone(raw_roll))
+    pitch_dac = axis_to_dac(apply_deadzone(-raw_pitch))
+    yaw_dac = axis_to_dac(apply_deadzone(raw_yaw))
+    return yaw_dac, pitch_dac, roll_dac
 
 
 class HandTracker:
@@ -363,18 +389,17 @@ class HandTracker:
         self._smoothed_dac = float(NEUTRAL)
         self._zone = "hover"
         self._intensity = 0.0
-        self._particles = _init_particles()
         self._killed = False
 
         import threading
         self._lock = threading.Lock()
-        self._throttle = 0.5       # 0.0=descent, 0.5=hover, 1.0=climb
+        self._throttle = 0.5
         self._hand_found = False
         self._latest_frame = None
         self._running = False
 
     def process_frame(self):
-        """Grab one frame, run zone-based throttle. Returns (frame, hand_found, throttle_pct, dac_value) or None."""
+        """Grab one frame, run finger-direction throttle. Returns (frame, hand_found, throttle_pct, dac_value) or None."""
         ret, frame = self._cap.read()
         if not ret:
             return None
@@ -395,14 +420,15 @@ class HandTracker:
                     break
 
         fist_state = False
-        palm_pos = None
+        direction = "mixed"
 
         if landmarks is not None:
             hand_found = True
             fist_state = is_fist(landmarks)
-            palm_pos = palm_centroid(landmarks)
+            if not fist_state:
+                direction = fingers_direction(landmarks)
 
-            # Draw skeleton with zone-appropriate color
+            # Draw skeleton
             skel_color = HOVER_COLOR if fist_state else (
                 CLIMB_COLOR if self._zone == "climb" else
                 DESCEND_COLOR if self._zone == "descend" else HOVER_COLOR)
@@ -412,7 +438,7 @@ class HandTracker:
                 pt1 = (int(a.x * w), int(a.y * h))
                 pt2 = (int(b.x * w), int(b.y * h))
                 cv2.line(frame, pt1, pt2, skel_color, 2, cv2.LINE_AA)
-            for idx in FINGERTIPS:
+            for idx in ALL_TIPS:
                 lm = landmarks[idx]
                 cx, cy = int(lm.x * w), int(lm.y * h)
                 cv2.circle(frame, (cx, cy), 7, skel_color, -1, cv2.LINE_AA)
@@ -434,7 +460,7 @@ class HandTracker:
             zone = "hover"
             intensity = 0.0
         else:
-            dac_value, zone, intensity = compute_zone_dac(palm_pos[1], False)
+            dac_value, zone, intensity = compute_direction_dac(direction)
 
         # EMA smooth
         self._smoothed_dac = EMA_ALPHA * dac_value + (1 - EMA_ALPHA) * self._smoothed_dac
@@ -445,12 +471,12 @@ class HandTracker:
         self._zone = zone
         self._intensity = intensity
 
-        # Animate particles
-        _step_particles(self._particles, zone, intensity)
+        # Draw finger rays (skip for fist — curled fingers look wrong)
+        if landmarks is not None and not fist_state:
+            draw_finger_rays(frame, landmarks, zone, time.time())
 
-        # Draw zone HUD
-        draw_zone_overlay(frame, dac_value, throttle_pct, hand_found, zone, intensity,
-                          self._particles, palm_pos, fist_state)
+        # Draw HUD
+        draw_hud_overlay(frame, dac_value, throttle_pct, hand_found, zone, fist_state)
 
         with self._lock:
             self._throttle = throttle_pct
@@ -466,7 +492,6 @@ class HandTracker:
             self._throttle = 0.0
 
     def get_throttle(self):
-        """Thread-safe. Returns (throttle_pct, hand_found). throttle_pct: 0.0=descent, 0.5=hover, 1.0=climb."""
         with self._lock:
             return self._throttle, self._hand_found
 
@@ -475,49 +500,27 @@ class HandTracker:
             return self._latest_frame
 
     def get_status(self):
-        """Returns (throttle, hand_found, zone, intensity)."""
         with self._lock:
             return self._throttle, self._hand_found, self._zone, self._intensity
 
     def start_threaded(self):
-        """Run hand tracking in a background thread with its own OpenCV window."""
         import threading
         self._running = True
         t = threading.Thread(target=self._thread_loop, daemon=True)
         t.start()
 
     def _thread_loop(self):
-        """Background loop: process frames, no GUI (macOS requires GUI on main thread)."""
         while self._running:
             result = self.process_frame()
             if result is None:
                 break
-            time.sleep(0.01)  # ~100Hz cap to avoid spinning
+            time.sleep(0.01)
 
     def stop(self):
         self._running = False
         self._landmarker.close()
         self._cap.release()
         cv2.destroyAllWindows()
-
-
-def read_joystick(joy):
-    """Read joystick axes and return (yaw_dac, pitch_dac, roll_dac)."""
-    import pygame
-    pygame.event.pump()
-
-    raw_roll = joy.get_axis(JOY_AXIS_ROLL)
-    raw_pitch = joy.get_axis(JOY_AXIS_PITCH)
-    raw_yaw = 0.0
-    if joy.get_numaxes() > JOY_AXIS_YAW:
-        raw_yaw = joy.get_axis(JOY_AXIS_YAW)
-    elif joy.get_numaxes() > 2:
-        raw_yaw = joy.get_axis(2)
-
-    roll_dac = axis_to_dac(apply_deadzone(raw_roll))
-    pitch_dac = axis_to_dac(apply_deadzone(-raw_pitch))  # invert Y axis
-    yaw_dac = axis_to_dac(apply_deadzone(raw_yaw))
-    return yaw_dac, pitch_dac, roll_dac
 
 
 def main():
@@ -531,7 +534,6 @@ def main():
     if not args.no_serial:
         ser = connect_pico()
 
-    # Joystick init (pygame subsystem only, no display window)
     joy = None
     if not args.no_joystick:
         joy = init_joystick()
@@ -542,8 +544,8 @@ def main():
 
     serial_status = "CONNECTED" if ser else "OFF (--no-serial)"
     input_mode = joy.get_name() if joy else "KEYBOARD"
-    print(f"Hand Throttle (Zone Control) — Serial: {serial_status}, Input: {input_mode}")
-    print("Fist = hover | Open hand top half = climb | Open hand bottom half = descend")
+    print(f"Hand Throttle (Finger Direction) — Serial: {serial_status}, Input: {input_mode}")
+    print("Fingers up = climb | Fingers down = descend | Fist = hover")
     if not joy:
         print("A/D = yaw | Up/Down = pitch | Left/Right = roll")
     print("K = killswitch | Q/ESC = quit")
@@ -561,12 +563,10 @@ def main():
                 break
             frame, hand_found, throttle_pct, dac_value = result
 
-            # Decay keyboard axes each frame
             kb_yaw *= KB_DECAY
             kb_pitch *= KB_DECAY
             kb_roll *= KB_DECAY
 
-            # Read yaw/pitch/roll from joystick or keyboard
             if joy:
                 yaw_dac, pitch_dac, roll_dac = read_joystick(joy)
             else:
@@ -577,11 +577,9 @@ def main():
             if ser:
                 send_to_pico(ser, dac_value, yaw_dac, pitch_dac, roll_dac)
 
-            # Draw input overlay on frame
             draw_input_overlay(frame, yaw_dac, pitch_dac, roll_dac,
                                label="JOYSTICK" if joy else "KEYBOARD")
 
-            # Serial badge
             if ser:
                 cv2.putText(frame, "SERIAL", (frame.shape[1] - 100, 52),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
