@@ -60,7 +60,7 @@ def main():
     throttle = 0
     yaw = NEUTRAL
     pitch = NEUTRAL
-    roll = NEUTRAL
+    roll = NEUTRAL 
     step = 100
 
     def clamp(value):

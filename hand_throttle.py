@@ -20,6 +20,7 @@ Requires: pip install mediapipe opencv-python pyserial pygame
 import argparse
 import math
 import os
+import random
 import sys
 import time
 
@@ -84,6 +85,22 @@ HAND_CONNECTIONS = [
     (5, 9), (9, 13), (13, 17),             # palm
 ]
 
+# Particle trails
+MAX_PARTICLES = 200
+PARTICLE_LIFETIME = 0.5
+PARTICLE_SPEED = 150       # pixels per second
+PARTICLES_PER_TIP = 3
+
+# Palm-locked throttle arc
+PALM_POP_DURATION = 0.3    # scale-pop entrance animation
+PALM_ARC_RADIUS = 70
+PALM_ARC_THICKNESS = 10
+
+# Skeleton color wave
+WAVE_DURATION = 0.4
+
+
+
 # Zone colors (BGR)
 CLIMB_COLOR = (0, 200, 80)
 DESCEND_COLOR = (60, 60, 220)
@@ -106,8 +123,10 @@ def compute_raw_openness(landmarks):
 
 
 def palm_centroid(landmarks):
-    cx = sum(lm.x for lm in landmarks) / len(landmarks)
-    cy = sum(lm.y for lm in landmarks) / len(landmarks)
+    """Center of palm — average of wrist + 4 MCP joints (not fingertips)."""
+    palm_indices = [0, 5, 9, 13, 17]
+    cx = sum(landmarks[i].x for i in palm_indices) / len(palm_indices)
+    cy = sum(landmarks[i].y for i in palm_indices) / len(palm_indices)
     return cx, cy
 
 
@@ -209,6 +228,160 @@ def draw_finger_rays(frame, landmarks, zone, t):
         cv2.circle(frame, start, 7, (255, 255, 255), 1, cv2.LINE_AA)
 
 
+def _zone_color(zone):
+    if zone == "climb":
+        return CLIMB_COLOR
+    elif zone == "descend":
+        return DESCEND_COLOR
+    return HOVER_COLOR
+
+
+def _lerp_color(c1, c2, t):
+    t = max(0.0, min(1.0, t))
+    return tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
+
+
+def spawn_particles(particles, landmarks, zone, w, h):
+    """Spawn spark particles from each fingertip."""
+    color = _zone_color(zone)
+    for tip_idx, base_idx in zip(ALL_TIPS, ALL_BASES):
+        tip = landmarks[tip_idx]
+        base = landmarks[base_idx]
+        tx, ty = tip.x * w, tip.y * h
+        dx, dy = tip.x - base.x, tip.y - base.y
+        length = math.sqrt(dx * dx + dy * dy)
+        if length < 1e-6:
+            continue
+        ndx, ndy = dx / length, dy / length
+        base_angle = math.atan2(ndy, ndx)
+        for _ in range(PARTICLES_PER_TIP):
+            spread = math.radians(random.uniform(-15, 15))
+            angle = base_angle + spread
+            speed = PARTICLE_SPEED * random.uniform(0.6, 1.0)
+            particles.append({
+                'x': tx, 'y': ty,
+                'vx': math.cos(angle) * speed,
+                'vy': math.sin(angle) * speed,
+                'life': PARTICLE_LIFETIME,
+                'max_life': PARTICLE_LIFETIME,
+                'size': random.uniform(2.0, 4.0),
+                'color': color,
+            })
+    # Cap pool
+    if len(particles) > MAX_PARTICLES:
+        del particles[:len(particles) - MAX_PARTICLES]
+
+
+def update_and_draw_particles(frame, particles, dt):
+    """Update particle physics and draw them."""
+    alive = []
+    for p in particles:
+        p['life'] -= dt
+        if p['life'] <= 0:
+            continue
+        p['x'] += p['vx'] * dt
+        p['y'] += p['vy'] * dt
+        alive.append(p)
+
+    particles[:] = alive
+
+    for p in particles:
+        frac = p['life'] / p['max_life']
+        r = max(1, int(p['size'] * frac))
+        c = tuple(int(v * frac) for v in p['color'])
+        cv2.circle(frame, (int(p['x']), int(p['y'])), r, c, -1, cv2.LINE_AA)
+
+
+def _pop_scale(t, duration):
+    """Scale pop easing: 0 -> 1.1 -> 1.0 over duration."""
+    if t >= duration:
+        return 1.0
+    p = t / duration
+    if p < 0.6:
+        return (p / 0.6) * 1.1
+    else:
+        return 1.1 - 0.1 * ((p - 0.6) / 0.4)
+
+
+def draw_palm_throttle(overlay, landmarks, zone, throttle_pct, w, h, scale=1.0):
+    """Draw 360° throttle ring with % text locked to palm centroid."""
+    if scale < 0.01:
+        return
+    cx_n, cy_n = palm_centroid(landmarks)
+    cx, cy = int(cx_n * w), int(cy_n * h)
+    color = _zone_color(zone)
+    r = max(1, int(PALM_ARC_RADIUS * scale))
+    t = max(1, int(PALM_ARC_THICKNESS * scale))
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    # Solid white disc inside the ring
+    disc_r = max(1, r - t // 2)
+    cv2.circle(overlay, (cx, cy), disc_r, (255, 255, 255), -1, cv2.LINE_AA)
+
+    # Background ring (dim gray, full 360°)
+    cv2.ellipse(overlay, (cx, cy), (r, r), 0, 0, 360, (40, 40, 40), t, cv2.LINE_AA)
+
+    # Fill arc — deviation from neutral, sweeps clockwise from 12 o'clock
+    deviation = abs(throttle_pct - 0.5) * 2.0
+    if deviation > 0.01:
+        sweep = int(360 * deviation)
+        cv2.ellipse(overlay, (cx, cy), (r, r), -90, 0, sweep, color, t, cv2.LINE_AA)
+
+    # % text centered inside ring (skip when too small to read)
+    if scale >= 0.3:
+        font_scale = 1.2 * scale
+        font_thick = max(1, int(3 * scale))
+        pct_text = f"{int(throttle_pct * 100)}"
+        (tw, th), _ = cv2.getTextSize(pct_text, font, font_scale, font_thick)
+        cv2.putText(overlay, pct_text, (cx - tw // 2, cy + th // 3), font, font_scale, (0, 0, 0), font_thick)
+        pct_font_scale = 0.5 * scale
+        pct_font_thick = max(1, int(1 * scale))
+        (pw, ph), _ = cv2.getTextSize("%", font, pct_font_scale, pct_font_thick)
+        cv2.putText(overlay, "%", (cx - pw // 2, cy + th // 3 + int(22 * scale)), font, pct_font_scale, (100, 100, 100), pct_font_thick)
+
+
+
+def draw_skeleton_with_wave(frame, landmarks, zone, prev_zone, wave_progress, w, h):
+    """Draw hand skeleton with color wave transition."""
+    new_color = _zone_color(zone)
+    old_color = _zone_color(prev_zone)
+
+    # Precompute wrist position for distance calc
+    wx, wy = landmarks[WRIST].x, landmarks[WRIST].y
+
+    for connection in HAND_CONNECTIONS:
+        a, b = landmarks[connection[0]], landmarks[connection[1]]
+        pt1 = (int(a.x * w), int(a.y * h))
+        pt2 = (int(b.x * w), int(b.y * h))
+
+        if wave_progress >= 1.0:
+            seg_color = new_color
+        else:
+            # Midpoint distance from wrist (normalized 0-1)
+            mid_x = (a.x + b.x) / 2
+            mid_y = (a.y + b.y) / 2
+            bone_dist = math.sqrt((mid_x - wx) ** 2 + (mid_y - wy) ** 2)
+            # Normalize: max hand span is roughly 0.3 in landmark coords
+            bone_norm = min(1.0, bone_dist / 0.3)
+            # Wave front: bones closer to wrist change first
+            t = max(0.0, min(1.0, (wave_progress * 1.5 - bone_norm)))
+            seg_color = _lerp_color(old_color, new_color, t)
+
+        cv2.line(frame, pt1, pt2, seg_color, 2, cv2.LINE_AA)
+
+    # Draw landmark dots with new color (always current)
+    dot_color = new_color if wave_progress >= 1.0 else _lerp_color(old_color, new_color, wave_progress)
+    for idx in ALL_TIPS + [4]:
+        lm = landmarks[idx]
+        cx, cy = int(lm.x * w), int(lm.y * h)
+        cv2.circle(frame, (cx, cy), 7, dot_color, -1, cv2.LINE_AA)
+        cv2.circle(frame, (cx, cy), 7, (255, 255, 255), 1, cv2.LINE_AA)
+    # Wrist dot
+    wx_px, wy_px = int(landmarks[WRIST].x * w), int(landmarks[WRIST].y * h)
+    cv2.circle(frame, (wx_px, wy_px), 6, (255, 180, 0), -1, cv2.LINE_AA)
+
+
+
 def draw_hud_overlay(frame, dac_value, throttle_pct, hand_found, zone, fist_state):
     """Draw HUD: status badge, DAC readout, throttle arc."""
     h, w = frame.shape[:2]
@@ -243,21 +416,6 @@ def draw_hud_overlay(frame, dac_value, throttle_pct, hand_found, zone, fist_stat
 
     # --- DAC readout (top-right) ---
     cv2.putText(overlay, f"DAC {dac_value}", (w - 150, 32), font, 0.6, (0, 255, 255), 2)
-
-    # --- Throttle arc (bottom-right) ---
-    arc_cx = w - 190
-    arc_cy = h - 190
-    arc_r = 165
-    arc_t = 36
-    cv2.ellipse(overlay, (arc_cx, arc_cy), (arc_r, arc_r), 0, 135, 405, (40, 40, 40), arc_t)
-    if throttle_pct > 0.01:
-        fill_angle = 135 + int(270 * throttle_pct)
-        arc_color = CLIMB_COLOR if zone == "climb" else DESCEND_COLOR if zone == "descend" else HOVER_COLOR
-        cv2.ellipse(overlay, (arc_cx, arc_cy), (arc_r, arc_r), 0, 135, fill_angle, arc_color, arc_t)
-    pct_text = f"{int(throttle_pct * 100)}"
-    (tw, th), _ = cv2.getTextSize(pct_text, font, 3.6, 8)
-    cv2.putText(overlay, pct_text, (arc_cx - tw // 2, arc_cy + th // 3), font, 3.6, (255, 255, 255), 8)
-    cv2.putText(overlay, "%", (arc_cx - 20, arc_cy + th // 3 + 55), font, 1.5, (180, 180, 180), 3)
 
     # Blend
     cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
@@ -391,6 +549,14 @@ class HandTracker:
         self._intensity = 0.0
         self._killed = False
 
+        # Demo animation state
+        self._particles = []
+        self._prev_zone = "hover"
+        self._zone_change_time = 0.0
+        self._prev_frame_time = time.time()
+        self._palm_appear_time = 0.0
+        self._prev_hand_found = False
+
         import threading
         self._lock = threading.Lock()
         self._throttle = 0.5
@@ -428,24 +594,6 @@ class HandTracker:
             if not fist_state:
                 direction = fingers_direction(landmarks)
 
-            # Draw skeleton
-            skel_color = HOVER_COLOR if fist_state else (
-                CLIMB_COLOR if self._zone == "climb" else
-                DESCEND_COLOR if self._zone == "descend" else HOVER_COLOR)
-            h, w = frame.shape[:2]
-            for connection in HAND_CONNECTIONS:
-                a, b = landmarks[connection[0]], landmarks[connection[1]]
-                pt1 = (int(a.x * w), int(a.y * h))
-                pt2 = (int(b.x * w), int(b.y * h))
-                cv2.line(frame, pt1, pt2, skel_color, 2, cv2.LINE_AA)
-            for idx in ALL_TIPS + [4]:
-                lm = landmarks[idx]
-                cx, cy = int(lm.x * w), int(lm.y * h)
-                cv2.circle(frame, (cx, cy), 7, skel_color, -1, cv2.LINE_AA)
-                cv2.circle(frame, (cx, cy), 7, (255, 255, 255), 1, cv2.LINE_AA)
-            wx, wy = int(landmarks[WRIST].x * w), int(landmarks[WRIST].y * h)
-            cv2.circle(frame, (wx, wy), 6, (255, 180, 0), -1, cv2.LINE_AA)
-
         # Compute DAC
         if self._killed:
             dac_value = 0
@@ -468,14 +616,55 @@ class HandTracker:
         dac_value = max(0, min(DAC_MAX, dac_value))
         throttle_pct = dac_value / DAC_MAX
 
+        # Detect zone change
+        now = time.time()
+        dt = now - self._prev_frame_time
+        self._prev_frame_time = now
+
+        if zone != self._zone:
+            self._prev_zone = self._zone
+            self._zone_change_time = now
         self._zone = zone
         self._intensity = intensity
 
-        # Draw finger rays (skip for fist — curled fingers look wrong)
-        if landmarks is not None and not fist_state:
-            draw_finger_rays(frame, landmarks, zone, time.time())
+        # Detect hand entry edge for pop animation
+        if hand_found and not self._prev_hand_found:
+            self._palm_appear_time = now
+        self._prev_hand_found = hand_found
 
-        # Draw HUD
+        h, w = frame.shape[:2]
+
+        if landmarks is not None:
+            # 1. Skeleton with color wave
+            wave_elapsed = now - self._zone_change_time
+            wave_progress = min(1.0, wave_elapsed / WAVE_DURATION) if self._zone_change_time > 0 else 1.0
+            if fist_state:
+                # Fist: solid hover color, no wave
+                draw_skeleton_with_wave(frame, landmarks, "hover", "hover", 1.0, w, h)
+            else:
+                draw_skeleton_with_wave(frame, landmarks, zone, self._prev_zone, wave_progress, w, h)
+
+            # 2. Finger rays (existing — skip for fist)
+            if not fist_state:
+                draw_finger_rays(frame, landmarks, zone, now)
+
+            # 3. Particle trails
+            if not fist_state:
+                spawn_particles(self._particles, landmarks, zone, w, h)
+            update_and_draw_particles(frame, self._particles, dt)
+
+            # 4. Palm throttle ring with scale-pop entrance (overlay pass)
+            pop_elapsed = now - self._palm_appear_time
+            scale = _pop_scale(pop_elapsed, PALM_POP_DURATION)
+            overlay = frame.copy()
+            draw_palm_throttle(overlay, landmarks, zone, throttle_pct, w, h, scale=scale)
+            cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
+
+        else:
+            # No hand — still update particles (they fade out)
+            update_and_draw_particles(frame, self._particles, dt)
+
+        # 6. HUD overlay (always last)
         draw_hud_overlay(frame, dac_value, throttle_pct, hand_found, zone, fist_state)
 
         with self._lock:
