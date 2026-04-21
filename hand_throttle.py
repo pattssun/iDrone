@@ -71,8 +71,8 @@ ARROW_KEYS = {
 WRIST = 0
 FIST_TIPS = [8, 12, 16, 20]       # index, middle, ring, pinky (for fist detection)
 FIST_MCPS = [5, 9, 13, 17]
-ALL_TIPS = [4, 8, 12, 16, 20]     # thumb, index, middle, ring, pinky
-ALL_BASES = [1, 5, 9, 13, 17]     # CMC for thumb, MCPs for others
+ALL_TIPS = [8, 12, 16, 20]         # index, middle, ring, pinky
+ALL_BASES = [5, 9, 13, 17]        # MCPs for each
 
 # Hand skeleton connections for drawing
 HAND_CONNECTIONS = [
@@ -139,9 +139,9 @@ def fingers_direction(landmarks):
         elif angle_from_down < threshold_rad:
             downs += 1
 
-    if ups == 5:
+    if ups == 4:
         return "up"
-    if downs == 5:
+    if downs == 4:
         return "down"
     return "mixed"
 
