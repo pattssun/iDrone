@@ -36,10 +36,19 @@
 
 - Right hand only (wrist x >= 0.5 in mirrored frame, left hand ignored)
 - Fist anywhere → hover (NEUTRAL). No hand → hover (NEUTRAL)
-- For each of 5 fingers: vector from base (CMC for thumb, MCP for others) to fingertip
+- For each of 4 fingers (index, middle, ring, pinky): vector from MCP to fingertip
 - "Pointing up" = angle from vertical < 45°. "Pointing down" = angle from downward vertical < 45°
-- All 5 pointing up → climb (DAC_MAX). All 5 pointing down → descend (DAC=0)
+- All 4 pointing up → climb (DAC_MAX). All 4 pointing down → descend (DAC=0)
 - Any disagreement → hover (NEUTRAL)
 - EMA smoothing on DAC value softens the binary input into a ~300ms ramp
 - Neon ray beams from each fingertip in pointing direction (green=climb, red=descend, gray=hover)
 - No calibration needed — start flying immediately
+
+## Demo Animations
+
+- **Fingertip particle trails**: sparks shed from each fingertip, drift in ray direction, fade over ~0.5s
+- **Palm energy orb**: glowing sphere at palm center, radius scales with throttle deviation, pulsing
+- **Skeleton color wave**: gradient ripple washes wrist→fingertips over 0.4s on zone change
+- **Zone transition flash**: brief white bloom at palm on zone change (0.15s)
+- **Wrist throttle ring**: spinning arc around wrist, fill proportional to throttle deviation
+- **Finger angle graph**: top-left, 4-line real-time plot of finger angles, 5s rolling window
