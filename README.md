@@ -1,12 +1,12 @@
 # iDrone — fly a toy drone with your hand
 
-https://github.com/user-attachments/assets/2e865f00-9945-4dc8-86bc-12b2fac63e3d
-
-**Watch it fly:** [Instagram](https://www.instagram.com/p/DX7eG0mR4I6/?hl=en)
+**Watch it fly:** [Instagram](https://www.instagram.com/p/DX7eG0mR4I6/?hl=en) (2.5M+ views)
 
 A MacBook watches my right hand through the webcam. When I open my hand with fingers pointing up, the drone climbs. Fingers down, it descends. Fist, it hovers. Under the hood, a Raspberry Pi Pico W is hot-wired into a Holy Stone HS210 remote, feeding voltage straight into the throttle stick's wiper pad like a robot thumb.
 
-## I had zero electronics background when I built this
+https://github.com/user-attachments/assets/2e865f00-9945-4dc8-86bc-12b2fac63e3d
+
+## I had zero hardware/electronics background when I built this
 
 I'd never soldered before. I didn't know what a DAC was. I broke a thing or two figuring it out, and I'm writing every gotcha down so you don't have to. If you can follow LEGO instructions and you're willing to touch a soldering iron twice, you can build this.
 
