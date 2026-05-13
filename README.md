@@ -1,6 +1,6 @@
 # iDrone — fly a toy drone with your hand
 
-https://github.com/pattssun/iDrone/raw/main/assets/hero.mp4
+https://github.com/user-attachments/assets/2e865f00-9945-4dc8-86bc-12b2fac63e3d
 
 **Watch it fly:** [Instagram](https://www.instagram.com/p/DX7eG0mR4I6/?hl=en)
 
