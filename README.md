@@ -1,6 +1,6 @@
 # iDrone — fly a toy drone with your hand
 
-<video src="assets/hero.mp4" controls width="600"></video>
+https://github.com/pattssun/iDrone/raw/main/assets/hero.mp4
 
 **Watch it fly:** [Instagram](https://www.instagram.com/p/DX7eG0mR4I6/?hl=en)
 
@@ -43,13 +43,13 @@ This is the exact sequence from the video:
 
 | Item | Price |
 |------|------:|
-| Holy Stone HS210 mini drone | $39.99 |
-| Raspberry Pi Pico 2 WH + Micro USB | $14.99 |
-| Raspberry Pi Pico 2 W (2-pack, spares) | $7.00 |
-| MCP4728 DAC breakout | $7.50 |
-| Male/female header pins | $7.49 |
-| Breadboard + jumper wires | $15.77 |
-| 28 AWG hookup wire (2 colors) | $10.09 |
+| [Holy Stone HS210 mini drone](https://www.amazon.com/gp/product/B07PBD6J2W) | $39.99 |
+| [Raspberry Pi Pico 2 WH + Micro USB](https://www.amazon.com/Pico-WH-Basic-Kit-Microcontroller/dp/B0F4W9J5CC) | $14.99 |
+| [Raspberry Pi Pico 2 W (2-pack, spares)](https://www.adafruit.com/product/6087) | $7.00 |
+| [MCP4728 DAC breakout](https://www.adafruit.com/product/4470) | $7.50 |
+| [Male/female header pins](https://www.amazon.com/2-54mm-Breakaway-Female-Connector-Arduino/dp/B01MQ48T2V) | $7.49 |
+| [Breadboard + jumper wires](https://www.amazon.com/REXQualis-Electronics-tie-Points-Breadboard-Potentiometer/dp/B073ZC68QG) | $15.77 |
+| [28 AWG hookup wire (2 colors)](https://www.amazon.com/Fermerry-Silicone-Colors-Flexible-Electrical/dp/B089CWGQKW) | $10.09 |
 | **Parts subtotal** | **$102.83** |
 
 The DAC ("digital-to-analog converter") is the chip that turns numbers into voltage. We only need channel A of its four. I²C address `0x60`. You also need a MacBook (or any Mac/PC running Python) with a webcam — assumed not included.
@@ -58,13 +58,13 @@ The DAC ("digital-to-analog converter") is the chip that turns numbers into volt
 
 | Item | Price |
 |------|------:|
-| Soldering iron kit | $13.99 |
-| Soldering practice kit | $8.88 |
-| Flux pen + desoldering wick | $9.99 |
-| Wire strippers | $6.99 |
-| Digital multimeter | $26.95 |
-| Precision screwdriver set | $25.19 |
-| Helping hands | $11.99 |
+| [Soldering iron kit](https://www.amazon.com/Soldering-Interchangeable-Adjustable-Temperature-Enthusiast/dp/B087767KNW) | $13.99 |
+| [Soldering practice kit](https://www.amazon.com/Gikfun-Welding-Practice-Soldering-Training/dp/B00VWB8F8K) | $8.88 |
+| [Flux pen + desoldering wick](https://www.amazon.com/Lesnow-Desoldering-Electronics-Disassemble-Electrical/dp/B0F8BJPC9Y) | $9.99 |
+| [Wire strippers](https://www.amazon.com/DOWELL-Stripper-Multi-Function-Tool%EF%BC%8CProfessional-Craftsmanship/dp/B07D25N45F) | $6.99 |
+| [Digital multimeter](https://www.amazon.com/AstroAI-Multimeter-Resistance-Transistors-Temperature/dp/B071JL6LLL) | $26.95 |
+| [Precision screwdriver set](https://www.amazon.com/gp/product/B08SGM6F79) | $25.19 |
+| [Helping hands](https://www.amazon.com/Neiko-01902-Adjustable-Magnifying-Alligator/dp/B000P42O3C) | $11.99 |
 | **Tools subtotal** | **$103.98** |
 
 If you've never soldered before, the practice kit is the cheapest insurance you'll ever buy. Do it before you touch the drone remote.
