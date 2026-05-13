@@ -1,254 +1,244 @@
-# iDrone
+# iDrone — fly a toy drone with your hand
 
-A 3D drone flight simulator controlled by your phone's gyroscope over Wi-Fi. Tilt your phone to fly through a world of buildings, trees, poles, and hoops.
+<!-- TODO: embed the 15s hero clip here (drop in assets/hero.mp4 or upload directly to GitHub) -->
 
-## How It Works
+**Watch it fly:** <!-- TODO: TikTok URL --> · <!-- TODO: Instagram URL -->
 
-### System Overview
+A MacBook watches my right hand through the webcam. When I open my hand with fingers pointing up, the drone climbs. Fingers down, it descends. Fist, it hovers. Under the hood, a Raspberry Pi Pico W is hot-wired into a Holy Stone HS210 remote, feeding voltage straight into the throttle stick's wiper pad like a robot thumb.
 
-```
-Phone (Gyroscope + Slider)
-    │
-    │  WebSocket (WSS, binary frames @ ~60 Hz)
-    ▼
-PhoneServer (phone_server.py)
-    │  calibration offset, clipping to ±45°
-    ▼
-TrackingResult { roll, pitch, yaw, throttle }
-    │
-    ▼
-ControlMapper (controls.py)
-    │  deadzone → EMA smoothing → sensitivity → rate clipping → rate limiting
-    ▼
-DroneCommand { roll_rate, pitch_rate, yaw_rate, throttle }
-    │
-    ▼
-DronePhysics (physics.py)
-    │  orientation integration → tilt-to-velocity → position integration → collision
-    ▼
-DroneState { x, y, z, roll, pitch, yaw, vx, vy, vz }
-    │
-    ├──► Renderer (OpenGL 3D scene)
-    ├──► Dashboard (OpenGL 2D HUD overlay)
-    └──► PhoneServer (telemetry back to phone @ 5 Hz)
-```
+## I had zero electronics background when I built this
 
-### Stage 1: Phone Input
+I'd never soldered before. I didn't know what a DAC was. I broke a thing or two figuring it out, and I'm writing every gotcha down so you don't have to. If you can follow LEGO instructions and you're willing to touch a soldering iron twice, you can build this.
 
-The phone runs a single-page web app (`phone.html`) served over HTTPS. The browser's `DeviceOrientationEvent` provides Euler angles at native sensor rate (~60 Hz on most devices):
+Parts cost: <!-- TODO: confirm parts-only cost --> (rough estimate ~$60 including the drone itself).
 
-| Browser Event | Axis | Maps To |
-|---------------|------|---------|
-| `gamma` | Left/right tilt | Roll |
-| `beta` | Forward/back tilt | Pitch |
-| `alpha` | Compass heading | Yaw |
+## What it actually does (and doesn't)
 
-A vertical slider on the phone UI controls throttle (0.0 to 1.0, center = hover).
+Read this before you build — it'll save you from expecting the wrong thing:
 
-**Calibration**: When the user taps "Calibrate", the current orientation is stored as zero-offset. All subsequent readings are relative to that position. This lets the user hold the phone at any comfortable angle.
+- **Throttle only.** Your hand controls altitude. Pitch, roll, and yaw still live on the physical joysticks of the remote. You can't fly the drone around a room hands-free.
+- **Hover drifts.** With pitch and roll on a stationary stick and no closed-loop position control, the drone will wander. The viral clip is short for a reason.
+- **Indoors only, practically.** Outside, wind makes the drift unmanageable.
+- **It's a toy drone.** The HS210 is twitchy by nature. This isn't a precision aircraft and it's not pretending to be.
 
-**Transport**: Orientation data is packed as 4 little-endian floats (16 bytes per frame) and sent over WSS for minimal latency. Throttle and calibration are sent as JSON.
+## How a flight goes
 
-### Stage 2: Server-Side Normalization (PhoneState)
+This is the exact sequence from the video:
 
-`phone_server.py` receives the raw sensor data and applies:
+1. Drone in my left hand, remote also in my left hand.
+2. Left thumb presses the physical takeoff button — drone takes off.
+3. Right hand in front of the webcam, fist → drone hovers.
+4. Right hand opens, fingers up → drone climbs.
+5. Fist again → hovers.
+6. Right hand opens, fingers down → drone descends.
+7. Catch the drone in my left hand on the way down. (That's the intended landing — don't try to set it down on the floor.)
 
-1. **Calibration subtraction**: `gamma - cal_gamma`, `-(beta - cal_beta)`, `(alpha - cal_alpha)`
-2. **Clipping**: Roll and pitch clamped to ±45°
-3. **Yaw wraparound**: Handles 0°/360° boundary via `(delta + 180) % 360 - 180`
-4. **Timeout detection**: If no data received for 2 seconds, marks as disconnected
+<!-- PHOTO: hero shot of the full setup — drone, hacked remote, breadboard with Pico, MacBook open showing the camera feed -->
 
-Output: `TrackingResult` — a normalized snapshot of phone orientation.
+---
 
-### Stage 3: Control Mapping (ControlMapper)
+## Bill of materials
 
-`controls.py` transforms raw angles into rate commands through a 4-stage pipeline. Each axis (roll, pitch, yaw) passes through the same chain:
+| Item | Qty | Notes |
+|------|-----|-------|
+| Holy Stone HS210 mini drone | 1 | Comes with the remote we're going to hack. |
+| Raspberry Pi Pico W (or Pico 2 W) | 1 | I used a Pico 2 W (RP2350). Either works. |
+| Adafruit MCP4728 DAC breakout | 1 | The DAC ("digital-to-analog converter") is the chip that turns numbers into voltage. I²C address `0x60`, 4 channels, we only need channel A. |
+| Half-size breadboard | 1 | |
+| M-M jumper wires | ~10 | For the breadboard wiring. |
+| Solid-core wire, 2 colors | ~30 cm | Thin, ~24–28 AWG. I used blue and white. |
+| USB-C cable | 1 | Pico W to MacBook. |
+| MacBook with webcam | 1 | Any Mac/PC running Python with a webcam works. |
 
-```
-Raw angle (degrees)
-    │
-    ▼
-[1] Deadzone (±3°)
-    Angles within ±3° snap to 0. Eliminates hand tremor noise.
-    Subtracts threshold from absolute value to avoid a jump at the boundary.
-    │
-    ▼
-[2] EMA Smoothing (alpha = 0.85)
-    smoothed = 0.85 * input + 0.15 * previous
-    Higher alpha = snappier response, lower = smoother but more lag.
-    │
-    ▼
-[3] Sensitivity & Rate Clipping
-    rate = smoothed_angle * 2.0 (sensitivity multiplier)
-    Clipped to ±45°/s for roll/pitch, ±90°/s for yaw.
-    │
-    ▼
-[4] Rate Limiting (500°/s²)
-    Caps frame-to-frame rate change to prevent jerky commands.
-    delta = clamp(new_rate - prev_rate, ±max_change * dt)
-```
+<!-- PHOTO: parts laid out flat, labeled -->
 
-**Throttle** passes through directly (no smoothing — immediate altitude response feels better).
+## Tools
 
-**Disconnection**: When the phone disconnects, all smoothed values decay by 0.9x per frame, bringing the drone to a gentle stop rather than an abrupt halt.
+- Soldering iron + solder
+- Multimeter (continuity + DC voltage modes)
+- Small Phillips screwdriver
+- Helping hands or tweezers (optional but life-saving)
 
-Output: `DroneCommand { roll_rate, pitch_rate, yaw_rate, throttle }` in degrees/second.
+---
 
-### Stage 4: Physics Simulation (DronePhysics)
+## The build
 
-`physics.py` steps the drone state forward each frame. The physics model is simplified for a responsive arcade feel rather than full aerodynamic simulation.
+### Step 1 — Open the HS210 remote
 
-#### Orientation Update
+Four Phillips screws on the back of the transmitter. Lift the PCB out carefully — the antenna wire is short and you can tear it if you yank.
 
-```
-state.roll  += roll_rate * dt       (clamped to ±45°)
-state.pitch += pitch_rate * dt      (clamped to ±45°)
-state.yaw   += yaw_rate * dt        (accumulates freely)
-```
+<!-- PHOTO: remote opened, PCB lifted out, antenna wire visible -->
 
-When rate input drops below 0.1°/s, roll and pitch auto-decay: `angle *= (1 - 3 * dt)`. This self-levels the drone when the phone is held flat.
+### Step 2 — Find the right pads
 
-#### Tilt-to-Velocity (Body Frame to World Frame)
+We need two pads on the PCB:
 
-The drone flies in the direction it's tilted, like a real quadcopter:
+- **L2** — the wiper pad of the left joystick's throttle axis. ("Wiper" is the middle terminal of a potentiometer — the one whose voltage changes as the stick moves.)
+- **B−** — board ground, on the edge of the PCB near the battery contacts.
 
-```
-body_forward = (pitch / 45°) * 8.0 m/s     at max tilt
-body_right   = (-roll / 45°) * 8.0 m/s     negative because right tilt = move right
+**⚠️ The PCB mirrors left/right when you flip it over.** Looking at the back of the board (the side you'll solder on), the "left" joystick is on your right. I labeled my first pad wrong because of this. Verify before you reach for the iron:
 
-world_vx = body_forward * sin(yaw) + body_right * cos(yaw)
-world_vz = body_forward * cos(yaw) - body_right * sin(yaw)
-```
+- **Continuity:** multimeter in continuity mode, one probe on `B−`, the other on the battery negative terminal. Should beep.
+- **Voltage swing:** multimeter in DC voltage mode, black probe on ground, red on `L2`. Wiggle the throttle stick — the voltage should swing. That's your pad.
 
-Velocity smoothing via exponential approach (drag factor 5.0) prevents instant speed changes.
+<!-- PHOTO: PCB from the back with L2 and B− pads circled and labeled -->
 
-#### Altitude
+### Step 3 — Solder two wires
 
-```
-target_vy = (throttle - 0.5) * 2.0 * 4.0 m/s
-```
+- Blue wire → `L2` (throttle signal in)
+- White wire → `B−` (shared ground)
 
-Throttle at 0.5 = hover (0 m/s). Full up = +4 m/s climb. Full down = -4 m/s descent. Ground clamped at 0.1m.
+That's the entire PCB hack. **Do not remove the joysticks. Do not cut any wiper tabs.** The joysticks need to stay electrically intact (more on why in "Things I learned"). Reassemble the remote.
 
-#### Collision Detection
+<!-- PHOTO: both wires soldered to L2 and B−, clean joints, labeled -->
 
-After position integration, the drone (modeled as a sphere of radius 0.4m) is tested against all obstacles:
+### Step 4 — Wire up the Pico and DAC
 
-| Obstacle Type | Collision Shape | Method |
-|---------------|----------------|--------|
-| Building (BOX) | Axis-aligned bounding box | Closest-point-on-box to sphere center |
-| Pole (CYLINDER) | Vertical cylinder | Horizontal distance + Y range check |
-| Tree (TREE) | Trunk cylinder + canopy sphere | Compound: check both shapes |
-| Hoop (HOOP) | None | Fly-through target, no collision |
+On the breadboard:
 
-On collision: the drone is pushed out to the nearest surface, and velocity is reflected along the collision normal with a 0.3 bounce factor. This feels like bumping into a wall — the drone stops and deflects slightly.
+**I²C bus** (I²C is the two-wire chat protocol the Pico uses to talk to the DAC):
+- Pico `GP4` → DAC `SDA`
+- Pico `GP5` → DAC `SCL`
 
-### Stage 5: Rendering
+**Power:**
+- Pico `3V3` → DAC `VIN`
+- Pico `GND` → DAC `GND`
 
-#### 3D Scene (Renderer)
+**Signal out to the remote:**
+- DAC channel `A` output → blue wire (the one soldered to `L2`)
+- Pico `GND` → white wire (the one soldered to `B−`) — shared ground between the Pico and the remote is non-negotiable.
 
-OpenGL immediate-mode rendering at 60 FPS. Draw order:
+DAC I²C address: `0x60`.
 
-1. Sky (3-band gradient: horizon haze → sky blue → deep blue)
-2. Chase camera (5m behind, 2.5m above drone, smooth-follow with 0.05 lerp)
-3. Ground (solid dark surface + 1m grid, accent lines every 5m)
-4. Drone shadow (elliptical, fades with altitude)
-5. Obstacles (buildings, trees, poles, hoops)
-6. Drone model (4 arms in X-config, center body, front LEDs, prop discs)
+<!-- PHOTO: breadboard with Pico + MCP4728, all wires in place, with blue/white wires running off-frame toward the remote -->
 
-#### HUD Overlay (Dashboard)
+### Step 5 — The schematic, end to end
 
-DJI Fly-style 2D overlay drawn in orthographic projection on top of the 3D scene:
+<!-- SCHEMATIC: five-component diagram — MacBook → Pico W → MCP4728 DAC → HS210 controller PCB → drone. USB serial shown as thick solid line, 2.4 GHz RF link as dashed. -->
 
-- **Compass bar** (top center): Heading with tick marks and cardinal labels
-- **Telemetry strip** (below compass): Alt | V.Speed | H.Speed | THR
-- **Attitude indicator** (left): Sky/ground sphere responding to roll and pitch
-- **Connection dot** (top-left): Green when phone connected, red when disconnected
-- **FPS counter** (top-right)
+### Step 6 — Flash MicroPython on the Pico
 
-#### Phone HUD
+1. Download the MicroPython UF2 file for your Pico (the right one is on micropython.org — Pico W or Pico 2 W).
+2. Hold the `BOOTSEL` button on the Pico, plug it into your Mac. A USB drive appears.
+3. Drag the UF2 onto that drive. The Pico reboots and the drive disappears. Firmware is on.
 
-The phone displays a mirrored subset: attitude indicator, telemetry (Alt, V.Speed, H.Speed), and connection status. Telemetry data flows back from the server at 5 Hz via WebSocket.
+### Step 7 — Upload the Pico firmware
 
-## Hand Tracking Throttle (Prototype)
-
-`hand_throttle.py` uses your MacBook webcam to control throttle via hand openness — closed fist = zero throttle, spread fingers = max throttle. This is a standalone prototype (no serial/hardware).
+**⚠️ Do not use the MicroPico VSCode plugin.** It sends Ctrl+C to the Pico every time it connects, which kills the running script. I lost hours to this. Use `mpremote` from the command line instead:
 
 ```bash
-pip install mediapipe opencv-python
-python hand_throttle.py
+pip install mpremote
+mpremote cp pico/pico_dac_controller.py :main.py
+mpremote reset
 ```
 
-1. Make a fist → press `C` to calibrate closed baseline
-2. Spread fingers → press `C` to calibrate open baseline
-3. Now hand openness maps to throttle (DAC 0–3000)
-4. Remove hand from frame → instant throttle 0
-5. Press `C` to re-calibrate, `Q`/ESC to quit
+Now the Pico runs the DAC controller on every power-up.
 
-## Setup
+### Step 8 — Set up the Mac
 
 ```bash
 pip install -r requirements.txt
-python main.py
 ```
 
-Open the printed URL on your phone (same Wi-Fi network). Accept the self-signed certificate warning.
+The MediaPipe hand-tracking model is already in the repo at `models/hand_landmarker.task`.
 
-## Controls
+### Step 9 — Verify hand tracking (no hardware needed)
 
-| Input | Action |
-|-------|--------|
-| Tilt phone left/right | Roll |
-| Tilt phone forward/back | Pitch |
-| Rotate phone (compass) | Yaw |
-| Throttle slider | Altitude (center = hover) |
-| Calibrate button | Set current orientation as neutral |
+```bash
+python hand_throttle.py --no-serial
+```
 
-| Key | Action |
-|-----|--------|
-| `R` | Reset drone to start |
-| `P` | Print phone URL |
-| `ESC` | Quit |
+A webcam window opens. Hold up your right hand. You should see neon ray beams shooting out from each fingertip:
 
-## Configuration
+- All fingers pointing up → rays glow **green** (climb)
+- All fingers pointing down → rays glow **red** (descend)
+- Fist or mixed → rays glow **gray** (hover)
 
-All tunable parameters live in `config.py`:
+<!-- PHOTO: screen recording / screenshot of the webcam window with green rays in climb mode -->
 
-| Parameter | Default | Effect |
-|-----------|---------|--------|
-| `CONTROL_DEADZONE_DEG` | 3.0° | Ignore tilt below this |
-| `CONTROL_EMA_ALPHA` | 0.85 | Smoothing (higher = snappier) |
-| `CONTROL_ROLL_SENSITIVITY` | 2.0 | Angle-to-rate multiplier |
-| `CONTROL_MAX_ROLL_RATE` | 45°/s | Max rotation speed |
-| `MOVE_MAX_SPEED` | 8.0 m/s | Top horizontal speed |
-| `THROTTLE_MAX_SPEED` | 4.0 m/s | Top vertical speed |
-| `MOVE_DRAG` | 5.0 | Velocity smoothing |
-| `OBSTACLE_BOUNCE_FACTOR` | 0.3 | Collision elasticity |
+### Step 10 — Verify the DAC actually outputs voltage (no drone needed)
 
-## Files
+Close VSCode or anything else that might be holding the Pico's serial port — only one program can talk to the Pico at a time. Plug the Pico in. Then run:
 
-| File | Purpose |
-|------|---------|
-| `main.py` | Entry point and main loop |
-| `config.py` | All tunable constants |
-| `phone.html` | Phone controller UI (served over HTTPS) |
-| `phone_server.py` | HTTPS + WSS server for phone communication |
-| `tracker.py` | TrackingResult data type |
-| `controls.py` | Control mapping pipeline (deadzone, smoothing, rate limiting) |
-| `physics.py` | Drone physics and collision detection |
-| `obstacles.py` | Obstacle types, world layout, collision math |
-| `renderer.py` | OpenGL 3D scene rendering |
-| `dashboard.py` | OpenGL 2D HUD overlay |
-| `drone_interface.py` | Abstract drone interface + simulator adapter |
-| `hand_throttle.py` | Hand tracking throttle prototype (webcam + MediaPipe) |
-| `pico/mac_dac_sender.py` | Keyboard-based DAC debug tool (serial to Pico) |
-| `pico/pico_dac_controller.py` | Pico W firmware — receives serial, drives MCP4728 DAC |
+```bash
+python hand_throttle.py
+```
 
-## World Layout
+Probe the blue wire (where it meets `L2`, or before you reassemble) with the multimeter in DC voltage mode:
 
-The drone starts at origin (0, 2, 0) hovering at 2m altitude. Obstacles are placed within a ~30m radius:
+- Fist → ~1.65 V (DAC value 2048, hover)
+- Fingers up → ~3.3 V (DAC value 4095, climb)
+- Fingers down → ~0 V (DAC value 0, descend)
 
-- **6 buildings** — gray boxes of varying height (3m to 15m)
-- **8 trees** — brown trunks with green sphere canopies
-- **4 poles** — thin metal cylinders, red beacon lights on tall ones
-- **3 hoops** — orange rings to fly through (no collision)
+The voltage should glide between states rather than snap — that's the EMA smoothing (~300 ms ramp).
+
+<!-- PHOTO: multimeter showing ~1.65 V on the blue wire with a fist in frame -->
+
+### Step 11 — Bind the drone
+
+Standard HS210 bind procedure: power on the remote, power on the drone, push the throttle stick all the way up then all the way down. This works because the joysticks are still electrically intact — the drone's chip needs the physical pots to complete the bind handshake.
+
+### Step 12 — First flight
+
+Pick an indoor, open space with a soft floor. Then:
+
+1. Hold the drone and remote together in your left hand.
+2. Right hand in front of the webcam, **start as a fist** (hover).
+3. Left thumb presses the takeoff button on the remote.
+4. Open your right hand with fingers up → drone climbs.
+5. Fist → hover.
+6. Open with fingers down → drone descends.
+7. **Catch it on the way down.** Don't try to land it on the floor — catching is the move.
+
+<!-- PHOTO: first-flight clip — longer, more confident flight than the viral one -->
+
+---
+
+## The code
+
+Two files do the real work.
+
+### `hand_throttle.py` (Mac side)
+
+- Pulls webcam frames with OpenCV and runs MediaPipe's `hand_landmarker.task` model on each one (right hand only — left hand is ignored).
+- For each of the four main fingers (index, middle, ring, pinky), draws a vector from the base joint to the fingertip and measures the angle from vertical. The thumb is excluded from the up/down decision because it points sideways even on a relaxed open hand.
+- Decision rule:
+  - All four fingers within 45° of pointing up → throttle = 4095 (climb)
+  - All four within 45° of pointing down → throttle = 0 (descend)
+  - Any disagreement, a fist (openness < 1.3), or no hand → throttle = 2048 (hover)
+- EMA smoothing with alpha 0.3 (~300 ms ramp) so the throttle glides rather than snaps.
+- Streams `throttle,yaw,pitch,roll\n` over USB serial at 115200 baud to the Pico.
+- On-screen: neon ray beams from each fingertip in the direction the finger is pointing, pulsing at 2 Hz, colored green / red / gray.
+- Flags:
+  - `--no-serial` — visuals only, no Pico needed (for verifying the camera + tracking).
+  - `--no-joystick` — run without a gamepad. Yaw/pitch/roll fall back to keyboard (A/D for yaw, arrow keys for pitch/roll).
+
+### `pico/pico_dac_controller.py` (Pico side, MicroPython)
+
+- Reads `throttle,yaw,pitch,roll` lines over USB serial at 115200 baud.
+- Writes the throttle value to MCP4728 channel A over I²C (address `0x60`, SDA on GP4, SCL on GP5).
+- **500 ms watchdog:** if no fresh packet arrives within 500 ms, all channels snap to 2048 (hover). If the Mac stalls or the USB cable wiggles, the drone goes neutral within half a second instead of doing something unpredictable.
+- Channels B/C/D are written too but the drone hack only listens to A right now. They're there for the four-axis future build.
+
+---
+
+## Things I learned (the hard way)
+
+1. **The PCB mirrors left/right when flipped.** Solder pad identity is not where your intuition says it is. Multimeter it before you solder.
+2. **The drone's chip pulses ADC reads through the joystick wipers.** ("ADC" is the chip's analog-to-digital converter — it's how it reads stick position.) If you probe a wiper and see weird ~290–366 mV jitter, that's the sampling pattern, not a broken board. Don't chase it.
+3. **Binding needs the physical pots.** Pull the joysticks out, or cut both tabs and try to feed the DAC straight in, and binding will silently fail. Leave the sticks alone. The DAC overrides the pot during flight because it's a stiffer voltage source.
+4. **The MicroPico VSCode plugin will kill your firmware on connect.** It sends Ctrl+C. Use `mpremote`.
+5. **The Pico's serial port is single-owner.** If VSCode, MicroPico, Thonny, or anything else has it open, `hand_throttle.py` won't be able to connect. Close everything else.
+6. **The 500 ms Pico watchdog is load-bearing.** It's what makes this safe to fly. Keep it in the firmware.
+
+---
+
+## What's next
+
+Four-axis gesture control is the obvious next move — pitch, roll, and yaw all on the hand. I'm also putting together a video on the AI-assisted method I used to teach myself enough electronics to get this built. More coming.
+
+---
+
+## License
+
+[MIT](LICENSE).

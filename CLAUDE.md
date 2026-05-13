@@ -14,11 +14,11 @@
 
 ## Key Files
 
-- `hand_throttle.py` — Hand tracking + keyboard/joystick + serial sender. `HandTracker` class can run standalone or threaded from `main.py`. Keyboard fallback: A/D=yaw, arrows=pitch/roll (tap-and-decay)
-- `main.py --hand` — Simulator with hand throttle. Joystick for pitch/roll/yaw (keyboard fallback if no joystick)
+- `hand_throttle.py` — Hand tracking + keyboard/joystick + serial sender. `HandTracker` class can run standalone or threaded. Keyboard fallback: A/D=yaw, arrows=pitch/roll (tap-and-decay)
 - `pico/pico_dac_controller.py` — Pico firmware (DO NOT MODIFY). Protocol: `throttle,yaw,pitch,roll\n`
 - `pico/mac_dac_sender.py` — Keyboard debug tool for DAC (standalone, not part of hand tracking)
 - `models/hand_landmarker.task` — MediaPipe model (7.5MB, already in repo)
+- `legacy/simulator/` — abandoned phone-gyro simulator (former `main.py --hand` path). Archived; not part of the current build.
 
 ## Constants
 
