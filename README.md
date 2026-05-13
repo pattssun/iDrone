@@ -1,8 +1,8 @@
 # iDrone — fly a toy drone with your hand
 
-<!-- TODO: embed the 15s hero clip here (drop in assets/hero.mp4 or upload directly to GitHub) -->
+<video src="assets/hero.mp4" controls width="600"></video>
 
-**Watch it fly:** <!-- TODO: TikTok URL --> · <!-- TODO: Instagram URL -->
+**Watch it fly:** [Instagram](https://www.instagram.com/p/DX7eG0mR4I6/?hl=en)
 
 A MacBook watches my right hand through the webcam. When I open my hand with fingers pointing up, the drone climbs. Fingers down, it descends. Fist, it hovers. Under the hood, a Raspberry Pi Pico W is hot-wired into a Holy Stone HS210 remote, feeding voltage straight into the throttle stick's wiper pad like a robot thumb.
 
@@ -10,7 +10,7 @@ A MacBook watches my right hand through the webcam. When I open my hand with fin
 
 I'd never soldered before. I didn't know what a DAC was. I broke a thing or two figuring it out, and I'm writing every gotcha down so you don't have to. If you can follow LEGO instructions and you're willing to touch a soldering iron twice, you can build this.
 
-Parts cost: <!-- TODO: confirm parts-only cost --> (rough estimate ~$60 including the drone itself).
+Parts (the stuff that stays in the build) ran me **~$103**. Tools — if you don't already own a soldering iron, multimeter, screwdrivers — add another **~$104**. Full breakdown below.
 
 ## What it actually does (and doesn't)
 
@@ -39,25 +39,37 @@ This is the exact sequence from the video:
 
 ## Bill of materials
 
-| Item | Qty | Notes |
-|------|-----|-------|
-| Holy Stone HS210 mini drone | 1 | Comes with the remote we're going to hack. |
-| Raspberry Pi Pico W (or Pico 2 W) | 1 | I used a Pico 2 W (RP2350). Either works. |
-| Adafruit MCP4728 DAC breakout | 1 | The DAC ("digital-to-analog converter") is the chip that turns numbers into voltage. I²C address `0x60`, 4 channels, we only need channel A. |
-| Half-size breadboard | 1 | |
-| M-M jumper wires | ~10 | For the breadboard wiring. |
-| Solid-core wire, 2 colors | ~30 cm | Thin, ~24–28 AWG. I used blue and white. |
-| USB-C cable | 1 | Pico W to MacBook. |
-| MacBook with webcam | 1 | Any Mac/PC running Python with a webcam works. |
+### Parts (stay in the build)
+
+| Item | Price |
+|------|------:|
+| Holy Stone HS210 mini drone | $39.99 |
+| Raspberry Pi Pico 2 WH + Micro USB | $14.99 |
+| Raspberry Pi Pico 2 W (2-pack, spares) | $7.00 |
+| MCP4728 DAC breakout | $7.50 |
+| Male/female header pins | $7.49 |
+| Breadboard + jumper wires | $15.77 |
+| 28 AWG hookup wire (2 colors) | $10.09 |
+| **Parts subtotal** | **$102.83** |
+
+The DAC ("digital-to-analog converter") is the chip that turns numbers into voltage. We only need channel A of its four. I²C address `0x60`. You also need a MacBook (or any Mac/PC running Python) with a webcam — assumed not included.
+
+### Tools (one-time, skip if you have them)
+
+| Item | Price |
+|------|------:|
+| Soldering iron kit | $13.99 |
+| Soldering practice kit | $8.88 |
+| Flux pen + desoldering wick | $9.99 |
+| Wire strippers | $6.99 |
+| Digital multimeter | $26.95 |
+| Precision screwdriver set | $25.19 |
+| Helping hands | $11.99 |
+| **Tools subtotal** | **$103.98** |
+
+If you've never soldered before, the practice kit is the cheapest insurance you'll ever buy. Do it before you touch the drone remote.
 
 <!-- PHOTO: parts laid out flat, labeled -->
-
-## Tools
-
-- Soldering iron + solder
-- Multimeter (continuity + DC voltage modes)
-- Small Phillips screwdriver
-- Helping hands or tweezers (optional but life-saving)
 
 ---
 
@@ -114,7 +126,7 @@ DAC I²C address: `0x60`.
 
 ### Step 5 — The schematic, end to end
 
-<!-- SCHEMATIC: five-component diagram — MacBook → Pico W → MCP4728 DAC → HS210 controller PCB → drone. USB serial shown as thick solid line, 2.4 GHz RF link as dashed. -->
+![Full schematic — MacBook → Pico W → MCP4728 DAC → HS210 controller PCB → drone](assets/idrone_full_schematic_with_endpoints.svg)
 
 ### Step 6 — Flash MicroPython on the Pico
 
