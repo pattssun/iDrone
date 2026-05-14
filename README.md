@@ -45,12 +45,11 @@ This is the exact sequence from the video:
 |------|------:|
 | [Holy Stone HS210 mini drone](https://www.amazon.com/gp/product/B07PBD6J2W) | $39.99 |
 | [Raspberry Pi Pico 2 WH + Micro USB](https://www.amazon.com/Pico-WH-Basic-Kit-Microcontroller/dp/B0F4W9J5CC) | $14.99 |
-| [Raspberry Pi Pico 2 W (2-pack, spares)](https://www.adafruit.com/product/6087) | $7.00 |
 | [MCP4728 DAC breakout](https://www.adafruit.com/product/4470) | $7.50 |
 | [Male/female header pins](https://www.amazon.com/2-54mm-Breakaway-Female-Connector-Arduino/dp/B01MQ48T2V) | $7.49 |
 | [Breadboard + jumper wires](https://www.amazon.com/REXQualis-Electronics-tie-Points-Breadboard-Potentiometer/dp/B073ZC68QG) | $15.77 |
 | [28 AWG hookup wire (2 colors)](https://www.amazon.com/Fermerry-Silicone-Colors-Flexible-Electrical/dp/B089CWGQKW) | $10.09 |
-| **Parts subtotal** | **$102.83** |
+| **Parts subtotal** | **$95.83** |
 
 The DAC ("digital-to-analog converter") is the chip that turns numbers into voltage. We only need channel A of its four. I²C address `0x60`. You also need a MacBook (or any Mac/PC running Python) with a webcam, assumed not included.
 
