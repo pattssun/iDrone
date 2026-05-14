@@ -1,5 +1,5 @@
-mediapipe>=0.10.0
-opencv-python>=4.8.0
-numpy>=1.24.0
-pyserial>=3.5
-pygame>=2.5.0
+mediapipe==0.10.21
+opencv-python==4.10.0.84
+numpy==1.26.4
+pyserial==3.5
+pygame==2.6.1
