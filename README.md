@@ -1,6 +1,6 @@
 # iDrone: fly a toy drone with your hand
 
-**Watch it fly:** [Instagram](https://www.instagram.com/p/DX7eG0mR4I6/?hl=en) (2.5M+ views), [TikTok](https://www.tiktok.com/@pattssun/video/7636158433917488398?is_from_webapp=1&sender_device=pc&web_id=7565995328207848990) (1.2M+ views)
+**Watch it fly:** [Instagram](https://www.instagram.com/p/DX7eG0mR4I6/?hl=en) (2.6M+ views), [TikTok](https://www.tiktok.com/@pattssun/video/7636158433917488398?is_from_webapp=1&sender_device=pc&web_id=7565995328207848990) (1.3M+ views)
 
 A MacBook watches my right hand through the webcam. When I open my hand with fingers pointing up, the drone climbs. Fingers down, it descends. Fist, it hovers. Under the hood, a Raspberry Pi Pico W is hot-wired into a Holy Stone HS210 remote, feeding voltage straight into the throttle stick's wiper pad like a robot thumb.
 
@@ -8,9 +8,9 @@ https://github.com/user-attachments/assets/2e865f00-9945-4dc8-86bc-12b2fac63e3d
 
 ## I had zero hardware/electronics background when I built this
 
-I'd never soldered before. I didn't know what a DAC was. I broke a thing or two figuring it out, and I'm writing every gotcha down so you don't have to. If you can follow LEGO instructions and you're willing to touch a soldering iron twice, you can build this.
+I'd never soldered before. I didn't know what a DAC was. I broke a thing or two figuring it out, and I'm writing every gotcha down so you don't have to. If you can follow LEGO instructions and you're willing to touch a soldering iron twice, you can build this. **You should also pass this repo into Claude Code or any other coding agent to ask it any questions you may have.**
 
-Parts (the stuff that stays in the build) ran me **~$103**. Tools, if you don't already own a soldering iron, multimeter, and screwdrivers, add another **~$104**. Full breakdown below.
+Parts (the stuff that stays in the build) ran me **~$95.83**. Tools, if you don't already own a soldering iron, multimeter, and screwdrivers, add another **~$104**. Full breakdown below.
 
 ## What it actually does (and doesn't)
 
@@ -30,8 +30,7 @@ This is the exact sequence from the video:
 3. Right hand in front of the webcam, fist → drone hovers.
 4. Right hand opens, fingers up → drone climbs.
 5. Fist again → hovers.
-6. Right hand opens, fingers down → drone descends.
-7. Catch the drone in my left hand on the way down. (That's the intended landing. Don't try to set it down on the floor.)
+6. Right hand opens, fingers down → drone descends and lands.
 
 <!-- PHOTO: hero shot of the full setup: drone, hacked remote, breadboard with Pico, MacBook open showing the camera feed -->
 
@@ -199,7 +198,6 @@ Pick an indoor, open space with a soft floor. Then:
 4. Open your right hand with fingers up → drone climbs.
 5. Fist → hover.
 6. Open with fingers down → drone descends.
-7. **Catch it on the way down.** Don't try to land it on the floor. Catching is the move.
 
 <!-- PHOTO: first-flight clip: longer, more confident flight than the viral one -->
 
