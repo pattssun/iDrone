@@ -4,16 +4,10 @@
 
 A MacBook watches my right hand through the webcam. When I open my hand with fingers pointing up, the drone climbs. Fingers down, it descends. Fist, it hovers. Under the hood, a Raspberry Pi Pico W is hot-wired into a Holy Stone HS210 remote, feeding voltage straight into the throttle stick's wiper pad like a robot thumb.
 
-https://github.com/user-attachments/assets/2e865f00-9945-4dc8-86bc-12b2fac63e3d
-
 > [!TIP]
-> **Stuck on any step? Drop this repo into [Claude Code](https://claude.ai/code) (or any AI coding agent) and ask away.** It can answer questions about the wiring, debug your code, walk you through anything below, and even help you adapt the build for a different drone. That's how I built it.
+> **I encourage you to drop this repo into Claude Code or any AI coding agent and ask away.** It can answer questions about the wiring, debug your code, walk you through anything below, and even help you adapt the build for a different drone. That's how I built it.
 
-## I had zero hardware/electronics background when I built this
-
-I'd never soldered before. I didn't know what a DAC was. I broke a thing or two figuring it out, and I'm writing every gotcha down so you don't have to. If you can follow LEGO instructions and you're willing to touch a soldering iron twice, you can build this.
-
-Parts (the stuff that stays in the build) ran me **~$96**. Tools, if you don't already own a soldering iron, multimeter, and screwdrivers, add another **~$104**. Full breakdown below.
+https://github.com/user-attachments/assets/2e865f00-9945-4dc8-86bc-12b2fac63e3d
 
 ## Contents
 
@@ -22,7 +16,7 @@ Parts (the stuff that stays in the build) ran me **~$96**. Tools, if you don't a
 - [The build](#the-build)
 - [The code](#the-code)
 - [Things I learned](#things-i-learned-the-hard-way)
-- [What it doesn't do (read before you build)](#what-it-doesnt-do-read-before-you-build)
+- [What it doesn't do](#what-it-doesnt-do)
 - [What's next](#whats-next)
 
 ## How a flight goes
@@ -238,7 +232,7 @@ Standalone keyboard-controlled DAC sender. Not part of the build flow. Useful on
 
 ---
 
-## What it doesn't do (read before you build)
+## What it doesn't do
 
 Setting expectations honestly so nobody's surprised:
 
@@ -254,7 +248,5 @@ Setting expectations honestly so nobody's surprised:
 Four-axis gesture control is the obvious next move: pitch, roll, and yaw all on the hand. I'm also putting together a video on the AI-assisted method I used to teach myself enough electronics to get this built. More coming.
 
 ---
-
-**If you build this, tag [@pattssun](https://www.instagram.com/pattssun/) on Instagram or TikTok. I want to see it fly.** ⭐ the repo to follow the four-axis build.
 
 [MIT](LICENSE) license.
