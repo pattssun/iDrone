@@ -1,25 +1,29 @@
 # iDrone: fly a toy drone with your hand
 
-**Watch it fly:** [Instagram](https://www.instagram.com/p/DX7eG0mR4I6/?hl=en) (2.6M+ views), [TikTok](https://www.tiktok.com/@pattssun/video/7636158433917488398?is_from_webapp=1&sender_device=pc&web_id=7565995328207848990) (1.3M+ views)
+**Watch it fly:** [Instagram](https://www.instagram.com/p/DX7eG0mR4I6/?hl=en) (2.6M+ views), [TikTok](https://www.tiktok.com/@pattssun/video/7636158433917488398) (1.3M+ views)
 
 A MacBook watches my right hand through the webcam. When I open my hand with fingers pointing up, the drone climbs. Fingers down, it descends. Fist, it hovers. Under the hood, a Raspberry Pi Pico W is hot-wired into a Holy Stone HS210 remote, feeding voltage straight into the throttle stick's wiper pad like a robot thumb.
 
 https://github.com/user-attachments/assets/2e865f00-9945-4dc8-86bc-12b2fac63e3d
 
+> [!TIP]
+> **Stuck on any step? Drop this repo into [Claude Code](https://claude.ai/code) (or any AI coding agent) and ask away.** It can answer questions about the wiring, debug your code, walk you through anything below, and even help you adapt the build for a different drone. That's how I built it.
+
 ## I had zero hardware/electronics background when I built this
 
-I'd never soldered before. I didn't know what a DAC was. I broke a thing or two figuring it out, and I'm writing every gotcha down so you don't have to. If you can follow LEGO instructions and you're willing to touch a soldering iron twice, you can build this. **You should also pass this repo into Claude Code or any other coding agent to ask it any questions you may have.**
+I'd never soldered before. I didn't know what a DAC was. I broke a thing or two figuring it out, and I'm writing every gotcha down so you don't have to. If you can follow LEGO instructions and you're willing to touch a soldering iron twice, you can build this.
 
-Parts (the stuff that stays in the build) ran me **~$95.83**. Tools, if you don't already own a soldering iron, multimeter, and screwdrivers, add another **~$104**. Full breakdown below.
+Parts (the stuff that stays in the build) ran me **~$96**. Tools, if you don't already own a soldering iron, multimeter, and screwdrivers, add another **~$104**. Full breakdown below.
 
-## What it actually does (and doesn't)
+## Contents
 
-Read this before you build. It'll save you from expecting the wrong thing.
-
-- **Throttle only.** Your hand controls altitude. Pitch, roll, and yaw still live on the physical joysticks of the remote. You can't fly the drone around a room hands-free.
-- **Hover drifts.** With pitch and roll on a stationary stick and no closed-loop position control, the drone will wander. The viral clip is short for a reason.
-- **Indoors only, practically.** Outside, wind makes the drift unmanageable.
-- **It's a toy drone.** The HS210 is twitchy by nature. This isn't a precision aircraft and it's not pretending to be.
+- [How a flight goes](#how-a-flight-goes)
+- [Bill of materials](#bill-of-materials)
+- [The build](#the-build)
+- [The code](#the-code)
+- [Things I learned](#things-i-learned-the-hard-way)
+- [What it doesn't do (read before you build)](#what-it-doesnt-do-read-before-you-build)
+- [What's next](#whats-next)
 
 ## How a flight goes
 
@@ -31,8 +35,6 @@ This is the exact sequence from the video:
 4. Right hand opens, fingers up → drone climbs.
 5. Fist again → hovers.
 6. Right hand opens, fingers down → drone descends and lands.
-
-<!-- PHOTO: hero shot of the full setup: drone, hacked remote, breadboard with Pico, MacBook open showing the camera feed -->
 
 ---
 
@@ -67,8 +69,6 @@ The DAC ("digital-to-analog converter") is the chip that turns numbers into volt
 
 If you've never soldered before, the practice kit is the cheapest insurance you'll ever buy. Do it before you touch the drone remote.
 
-<!-- PHOTO: parts laid out flat, labeled -->
-
 ---
 
 ## The build
@@ -77,8 +77,6 @@ If you've never soldered before, the practice kit is the cheapest insurance you'
 
 Four Phillips screws on the back of the transmitter. Lift the PCB out carefully. The antenna wire is short and you can tear it if you yank.
 
-<!-- PHOTO: remote opened, PCB lifted out, antenna wire visible -->
-
 ### Step 2: Find the right pads
 
 We need two pads on the PCB:
@@ -86,21 +84,18 @@ We need two pads on the PCB:
 - **L2**: the wiper pad of the left joystick's throttle axis. ("Wiper" is the middle terminal of a potentiometer, the one whose voltage changes as the stick moves.)
 - **B−**: board ground, on the edge of the PCB near the battery contacts.
 
-**⚠️ The PCB mirrors left/right when you flip it over.** Looking at the back of the board (the side you'll solder on), the "left" joystick is on your right. I labeled my first pad wrong because of this. Verify before you reach for the iron:
+> [!WARNING]
+> **The PCB mirrors left/right when you flip it over.** Looking at the back of the board (the side you'll solder on), the "left" joystick is on your right. I labeled my first pad wrong because of this. Verify before you reach for the iron.
 
 - **Continuity:** multimeter in continuity mode, one probe on `B−`, the other on the battery negative terminal. Should beep.
 - **Voltage swing:** multimeter in DC voltage mode, black probe on ground, red on `L2`. Wiggle the throttle stick. The voltage should swing. That's your pad.
-
-<!-- PHOTO: PCB from the back with L2 and B− pads circled and labeled -->
 
 ### Step 3: Solder two wires
 
 - Blue wire → `L2` (throttle signal in)
 - White wire → `B−` (shared ground)
 
-That's the entire PCB hack. **Do not remove the joysticks. Do not cut any wiper tabs.** The joysticks need to stay electrically intact (more on why in "Things I learned"). Reassemble the remote.
-
-<!-- PHOTO: both wires soldered to L2 and B−, clean joints, labeled -->
+That's the entire PCB hack. **Do not remove the joysticks. Do not cut any wiper tabs.** The joysticks need to stay electrically intact (more on why in [Things I learned](#things-i-learned-the-hard-way)). Reassemble the remote.
 
 ### Step 4: Wire up the Pico and DAC
 
@@ -120,21 +115,20 @@ On the breadboard:
 
 DAC I²C address: `0x60`.
 
-<!-- PHOTO: breadboard with Pico + MCP4728, all wires in place, with blue/white wires running off-frame toward the remote -->
-
 ### Step 5: The schematic, end to end
 
 ![Full schematic: MacBook to Pico W to MCP4728 DAC to HS210 controller PCB to drone](assets/idrone_full_schematic_with_endpoints.svg)
 
 ### Step 6: Flash MicroPython on the Pico
 
-1. Download the MicroPython UF2 file for your Pico (the right one is on micropython.org, either Pico W or Pico 2 W).
+1. Download the MicroPython UF2 file for your Pico: [Pico 2 W](https://micropython.org/download/RPI_PICO2_W/) (matches the BOM) or [Pico W](https://micropython.org/download/RPI_PICO_W/) if that's what you have.
 2. Hold the `BOOTSEL` button on the Pico, plug it into your Mac. A USB drive appears.
 3. Drag the UF2 onto that drive. The Pico reboots and the drive disappears. Firmware is on.
 
 ### Step 7: Upload the Pico firmware
 
-**⚠️ Do not use the MicroPico VSCode plugin.** It sends Ctrl+C to the Pico every time it connects, which kills the running script. I lost hours to this. Use `mpremote` from the command line instead:
+> [!WARNING]
+> **Do not use the MicroPico VSCode plugin.** It sends Ctrl+C to the Pico every time it connects, which kills the running script. I lost hours to this. Use `mpremote` from the command line instead.
 
 ```bash
 pip install mpremote
@@ -146,7 +140,11 @@ Now the Pico runs the DAC controller on every power-up.
 
 ### Step 8: Set up the Mac
 
+Tested on **Python 3.11**. MediaPipe is finicky on 3.13, so stick to 3.10–3.12 if you can.
+
 ```bash
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -164,8 +162,6 @@ A webcam window opens. Hold up your right hand. You should see neon ray beams sh
 - All fingers pointing down → rays glow **red** (descend)
 - Fist or mixed → rays glow **gray** (hover)
 
-<!-- PHOTO: screen recording / screenshot of the webcam window with green rays in climb mode -->
-
 ### Step 10: Verify the DAC actually outputs voltage (no drone needed)
 
 Close VSCode or anything else that might be holding the Pico's serial port. Only one program can talk to the Pico at a time. Plug the Pico in. Then run:
@@ -182,8 +178,6 @@ Probe the blue wire (where it meets `L2`, or before you reassemble) with the mul
 
 The voltage should glide between states rather than snap. That's the EMA smoothing (~300 ms ramp).
 
-<!-- PHOTO: multimeter showing ~1.65 V on the blue wire with a fist in frame -->
-
 ### Step 11: Bind the drone
 
 Standard HS210 bind procedure: power on the remote, power on the drone, push the throttle stick all the way up then all the way down. This works because the joysticks are still electrically intact. The drone's chip needs the physical pots to complete the bind handshake.
@@ -198,8 +192,6 @@ Pick an indoor, open space with a soft floor. Then:
 4. Open your right hand with fingers up → drone climbs.
 5. Fist → hover.
 6. Open with fingers down → drone descends.
-
-<!-- PHOTO: first-flight clip: longer, more confident flight than the viral one -->
 
 ---
 
@@ -246,12 +238,23 @@ Standalone keyboard-controlled DAC sender. Not part of the build flow. Useful on
 
 ---
 
+## What it doesn't do (read before you build)
+
+Setting expectations honestly so nobody's surprised:
+
+- **Throttle only.** Your hand controls altitude. Pitch, roll, and yaw still live on the physical joysticks of the remote. You can't fly the drone around a room hands-free.
+- **Hover drifts.** With pitch and roll on a stationary stick and no closed-loop position control, the drone will wander. The viral clip is short for a reason.
+- **Indoors only, practically.** Outside, wind makes the drift unmanageable.
+- **It's a toy drone.** The HS210 is twitchy by nature. This isn't a precision aircraft and it's not pretending to be.
+
+---
+
 ## What's next
 
 Four-axis gesture control is the obvious next move: pitch, roll, and yaw all on the hand. I'm also putting together a video on the AI-assisted method I used to teach myself enough electronics to get this built. More coming.
 
 ---
 
-## License
+**If you build this, tag [@pattssun](https://www.instagram.com/pattssun/) on Instagram or TikTok. I want to see it fly.** ⭐ the repo to follow the four-axis build.
 
-[MIT](LICENSE).
+[MIT](LICENSE) license.
