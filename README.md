@@ -1,4 +1,4 @@
-# iDrone: fly a toy drone with your hand
+# iDrone: Control a drone with your hand
 
 **Watch it fly:** [Instagram](https://www.instagram.com/p/DX7eG0mR4I6/?hl=en) (2.6M+ views), [TikTok](https://www.tiktok.com/@pattssun/video/7636158433917488398) (1.3M+ views)
 
