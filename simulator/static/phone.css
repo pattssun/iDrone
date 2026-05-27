@@ -707,7 +707,7 @@ body {
   content: "PLACE DRONE · TAP TO ARM";
 }
 .state-awaiting.pad-armed .landing-pad .pad-label::before {
-  content: "ARMED · PRESS SPACE TO DOCK";
+  content: "ARMED";
 }
 .state-docking .landing-pad .pad-label { opacity: 0; }
 

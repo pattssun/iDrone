@@ -1,22 +1,22 @@
 // iDrone simulator front-end: three.js scene + 60 Hz physics + HUD wiring.
 
 import * as THREE from "/static/lib/three.module.min.js";
-import { connect } from "/static/js/ws.js?v=8";
-import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=8";
-import { buildArena } from "/static/js/arena.js?v=8";
-import { buildDrone } from "/static/js/drone.js?v=8";
-import { buildTrail } from "/static/js/trail.js?v=8";
+import { connect } from "/static/js/ws.js?v=9";
+import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=9";
+import { buildArena } from "/static/js/arena.js?v=9";
+import { buildDrone } from "/static/js/drone.js?v=9";
+import { buildTrail } from "/static/js/trail.js?v=9";
 import {
   buildPedestal,
   buildOrbitCamera,
   STATIONARY_POS,
-} from "/static/js/stationary.js?v=8";
+} from "/static/js/stationary.js?v=9";
 import {
   updateAttitude,
   updateCompass,
   updateTelemetry,
   setLinkStatus,
-} from "/static/js/hud.js?v=8";
+} from "/static/js/hud.js?v=9";
 
 const canvas = document.getElementById("canvas");
 const hintEl = document.getElementById("hud-hint");
@@ -44,6 +44,11 @@ scene.add(arena.group);
 const drone = buildDrone();
 scene.add(drone.root);
 scene.add(drone.shadow);
+// Drone stays hidden on the desktop until the user arms it (first Space press).
+const droneTargetScale = drone.root.scale.x;
+drone.root.visible = false;
+drone.shadow.visible = false;
+drone.root.scale.setScalar(0);
 
 const trail = buildTrail();
 scene.add(trail.line);
@@ -72,6 +77,18 @@ const statOri = { roll: 0, pitch: 0, yaw: 0 };
 // sizes the segmented-thumb (its CSS vars default to 0 width).
 let mode = null; // null | 'free' | 'stationary'
 let landed = false; // true once the user signals (Space) that the drone is on the pad
+let armed = false;  // true once the drone has been materialized (first deliberate action)
+let droneArmT = -1; // 0..1 progression of the scale-in animation; -1 = idle
+
+function armDrone() {
+  if (armed) return;
+  armed = true;
+  drone.root.visible = true;
+  drone.shadow.visible = true;
+  drone.root.scale.setScalar(0.0001);
+  droneArmT = 0;
+  hintEl?.classList.add("hidden");
+}
 
 let trailAccumulator = 0;
 const TRAIL_PUSH_INTERVAL = 1 / 30;
@@ -210,15 +227,21 @@ function syncModeThumb() {
 }
 
 for (const btn of modeToggle.querySelectorAll(".mode-opt")) {
-  btn.addEventListener("click", () => setMode(btn.dataset.mode));
+  btn.addEventListener("click", () => {
+    // Clicking FLIGHT before pressing Space still counts as arming.
+    if (btn.dataset.mode === "free" && !armed) armDrone();
+    setMode(btn.dataset.mode);
+  });
 }
 
 // Space toggles "drone is on the pad". Only meaningful in stationary mode.
+// The first Space press also materializes the drone onto the pedestal.
 window.addEventListener("keydown", (e) => {
   if (e.code !== "Space") return;
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
   if (mode !== "stationary") return;
   e.preventDefault();
+  if (!armed) armDrone();
   landed = !landed;
   link.send({ type: "landed", value: landed });
 });
@@ -227,8 +250,8 @@ function sendLandedToPhone() {
   link.send({ type: "landed", value: landed });
 }
 
-// Initial thumb position once layout has settled.
-requestAnimationFrame(() => setMode("free", { silent: true }));
+// Default to stationary so the drone "lives on the pad" until armed.
+requestAnimationFrame(() => setMode("stationary", { silent: true }));
 
 // ---------- loop ----------
 const PHYS_DT = 1 / 60;
@@ -242,6 +265,14 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
+
+  // Drone materialize-in animation (only runs immediately after arming).
+  if (droneArmT >= 0 && droneArmT < 1) {
+    droneArmT = Math.min(1, droneArmT + dt / 0.75);
+    // Cubic-ease-out feels organic — slow stop at full size.
+    const eased = 1 - Math.pow(1 - droneArmT, 3);
+    drone.root.scale.setScalar(eased * droneTargetScale);
+  }
 
   physAcc += dt;
   while (physAcc >= PHYS_DT) {

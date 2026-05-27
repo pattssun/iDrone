@@ -1,6 +1,6 @@
 // Phone controller — orientation + throttle slider, relayed to the sim.
 
-import { connect } from "/static/js/ws.js?v=8";
+import { connect } from "/static/js/ws.js?v=9";
 
 // --- DOM ---
 const app = document.getElementById("app");
