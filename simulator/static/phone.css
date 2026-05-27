@@ -662,7 +662,6 @@ body {
   display: grid;
   grid-template-columns: 2in 2in;
   grid-template-rows: 2in 2in;
-  transform: translate(-1in, -1in);
 }
 .pad-circle {
   width: 0.55in;
