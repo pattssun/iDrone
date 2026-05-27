@@ -50,6 +50,15 @@ export function buildDrone() {
     metalness: 0.1,
     side: THREE.DoubleSide,
   });
+  // Front props are green so the forward direction is unmistakable.
+  const propMatFront = new THREE.MeshStandardMaterial({
+    color: 0x2ee07a,
+    emissive: 0x0e6634,
+    emissiveIntensity: 0.45,
+    roughness: 0.45,
+    metalness: 0.1,
+    side: THREE.DoubleSide,
+  });
 
   // ---------- core body (sleek lozenge) ----------
   const bodyGroup = new THREE.Group();
@@ -191,8 +200,10 @@ export function buildDrone() {
     propGroup.position.set(armX, 0.108, armZ);
     bodyGroup.add(propGroup);
 
-    const blade1 = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.008, 0.028), propMat);
-    const blade2 = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.008, 0.028), propMat);
+    const isFront = sz > 0;
+    const bladeMat = isFront ? propMatFront : propMat;
+    const blade1 = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.008, 0.028), bladeMat);
+    const blade2 = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.008, 0.028), bladeMat);
     blade2.rotation.y = Math.PI / 2;
     propGroup.add(blade1, blade2);
 
@@ -207,7 +218,7 @@ export function buildDrone() {
     const sweep = new THREE.Mesh(
       new THREE.CircleGeometry(0.22, 32),
       new THREE.MeshBasicMaterial({
-        color: 0xb0d6ff,
+        color: isFront ? 0x7af0a8 : 0xb0d6ff,
         transparent: true,
         opacity: 0.09,
         side: THREE.DoubleSide,
