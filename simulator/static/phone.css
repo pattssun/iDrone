@@ -726,73 +726,122 @@ body {
   50%      { transform: scale(1.12); opacity: 1.0;  box-shadow: 0 0 32px rgba(0, 194, 255, 0.85); }
 }
 
-/* ----- Landed state: circles merge to center, cyan→green color sweep,
-   then a satisfying check-pulse. Triggered by Space on the desktop. ----- */
+/* ----- Landed state: circles stay at corners but glow much bigger so the
+   green is visible AROUND the drone, plus outward sonar ripples and a
+   steady outer halo. Triggered by Space on the desktop (Space toggles). ----- */
+
+/* Corner circles intensify + grow on landing — their oversized glow leaks
+   well past the drone footprint where it can actually be seen. */
 .landed .pad-circle {
-  /* Stop the pulsing motion; replace with the converge+settle sequence. */
-  animation: pad-land-settle 1.6s ease-out 0.65s forwards;
-  left: 0 !important;
-  top: 0 !important;
-  background: radial-gradient(circle, rgba(46, 224, 122, 0.7), rgba(46, 224, 122, 0.08) 70%);
-  border-color: rgba(46, 224, 122, 0.95);
-  box-shadow: 0 0 36px rgba(46, 224, 122, 0.65);
+  width: calc(var(--phys-in, 96px) * 0.95);
+  height: calc(var(--phys-in, 96px) * 0.95);
+  margin-left: calc(var(--phys-in, 96px) * -0.475);
+  margin-top: calc(var(--phys-in, 96px) * -0.475);
+  background: radial-gradient(circle, rgba(46, 224, 122, 0.85), rgba(46, 224, 122, 0.08) 72%);
+  border-color: rgba(46, 224, 122, 1.0);
+  animation: docked-corner-glow 2.4s ease-in-out infinite;
 }
-@keyframes pad-land-settle {
-  0%   { transform: scale(1);    box-shadow: 0 0 36px rgba(46, 224, 122, 0.65); }
-  35%  { transform: scale(1.45); box-shadow: 0 0 64px rgba(46, 224, 122, 0.95); }
-  60%  { transform: scale(0.92); }
-  100% { transform: scale(1.05); box-shadow: 0 0 42px rgba(46, 224, 122, 0.7); }
+@keyframes docked-corner-glow {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 60px  rgba(46, 224, 122, 0.7),
+      0 0 130px rgba(46, 224, 122, 0.45),
+      0 0 220px rgba(46, 224, 122, 0.18);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow:
+      0 0 80px  rgba(46, 224, 122, 0.9),
+      0 0 170px rgba(46, 224, 122, 0.6),
+      0 0 280px rgba(46, 224, 122, 0.28);
+  }
+}
+
+/* Big soft halo around the drone footprint — transparent in the middle
+   (where the drone sits) and peak intensity just past its outer edge. */
+.pad-aura {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width:  calc(var(--phys-in, 96px) * 5.2);
+  height: calc(var(--phys-in, 96px) * 5.2);
+  margin-left: calc(var(--phys-in, 96px) * -2.6);
+  margin-top:  calc(var(--phys-in, 96px) * -2.6);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    transparent 22%,
+    rgba(46, 224, 122, 0.45) 36%,
+    rgba(46, 224, 122, 0.18) 50%,
+    transparent 66%
+  );
+  opacity: 0;
+  transition: opacity 0.8s ease;
+  pointer-events: none;
+  filter: blur(2px);
+}
+.landed .pad-aura {
+  opacity: 1;
+  animation: aura-breathe 2.6s ease-in-out infinite;
+}
+@keyframes aura-breathe {
+  0%, 100% { transform: scale(1);    opacity: 0.9; }
+  50%      { transform: scale(1.06); opacity: 1.0; }
+}
+
+/* Three radiating ripples on the instant of landing — sonar feel. They
+   only animate while the .landed class is present; toggling off cancels. */
+.pad-ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width:  calc(var(--phys-in, 96px) * 3.2);
+  height: calc(var(--phys-in, 96px) * 3.2);
+  margin-left: calc(var(--phys-in, 96px) * -1.6);
+  margin-top:  calc(var(--phys-in, 96px) * -1.6);
+  border-radius: 50%;
+  border: 2px solid rgba(46, 224, 122, 0.85);
+  box-shadow: 0 0 18px rgba(46, 224, 122, 0.5);
+  opacity: 0;
+  pointer-events: none;
+}
+.landed .pad-ripple {
+  animation: ripple-out 1.9s ease-out forwards;
+}
+.landed .pad-ripple:nth-of-type(2) { animation-delay: 0.22s; }
+.landed .pad-ripple:nth-of-type(3) { animation-delay: 0.44s; }
+@keyframes ripple-out {
+  0%   { transform: scale(0.55); opacity: 0;   border-width: 3px; }
+  18%  {                          opacity: 0.95;                   }
+  100% { transform: scale(1.85); opacity: 0;   border-width: 1px; }
 }
 
 .landing-pad .pad-label {
-  transition: opacity 0.5s ease;
+  transition: opacity 0.45s ease;
 }
 .landed .pad-label { opacity: 0; }
 
-/* "DOCKED" label fades in once the circles have merged. */
+/* "DOCKED" label sits well below the drone footprint so it's actually visible. */
 .pad-landed-label {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, calc(var(--phys-in, 96px) * 0.7));
+  transform: translate(-50%, calc(var(--phys-in, 96px) * 1.7));
   font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.34em;
-  color: #2ee07a;
-  text-shadow: 0 0 18px rgba(46, 224, 122, 0.7);
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: #b9f5d2;
+  text-shadow: 0 0 20px rgba(46, 224, 122, 0.85);
   opacity: 0;
   transition: opacity 0.5s ease;
   pointer-events: none;
+  white-space: nowrap;
 }
 .landed .pad-landed-label {
   opacity: 1;
-  transition: opacity 0.5s ease 1.4s;
+  transition: opacity 0.5s ease 1.0s;
 }
-
-/* Re-arm button appears after the animation. */
-.pad-reset {
-  position: absolute;
-  bottom: max(env(safe-area-inset-bottom), 28px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 11px 22px;
-  border-radius: 999px;
-  border: 1px solid rgba(46, 224, 122, 0.55);
-  background: rgba(46, 224, 122, 0.1);
-  color: #b9f5d2;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.28em;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.4s ease;
-}
-.landed .pad-reset {
-  opacity: 1;
-  pointer-events: auto;
-  transition: opacity 0.4s ease 1.6s;
-}
-.pad-reset:active { background: rgba(46, 224, 122, 0.22); }
 
 /* Tiny corner connection dot — visible only in stationary mode */
 .stat-conn-dot {

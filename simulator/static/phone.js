@@ -1,6 +1,6 @@
 // Phone controller — orientation + throttle slider, relayed to the sim.
 
-import { connect } from "/static/js/ws.js?v=6";
+import { connect } from "/static/js/ws.js?v=7";
 
 // --- DOM ---
 const app = document.getElementById("app");
@@ -116,11 +116,6 @@ function applyMode(next) {
   }
 }
 
-const padReset = document.getElementById("pad-reset");
-padReset?.addEventListener("click", () => {
-  app.classList.remove("landed");
-  vibrate(8);
-});
 
 const link = connect({
   role: "phone",
@@ -131,11 +126,18 @@ const link = connect({
     } else if (msg.type === "mode" && typeof msg.value === "string") {
       applyMode(msg.value);
     } else if (msg.type === "landed") {
-      // Only meaningful while we're acting as a landing pad.
-      if (simMode === "stationary") {
-        app.classList.add("landed");
-        vibrate([10, 40, 10]);
+      // Explicit value from the sim. Force a clean restart of the CSS
+      // animations by toggling off briefly if already landed (so a re-press
+      // of Space replays the ripple burst even though .landed stays on).
+      if (simMode !== "stationary") return;
+      const next = !!msg.value;
+      if (next && app.classList.contains("landed")) {
+        app.classList.remove("landed");
+        // Reflow flushes the in-flight animations.
+        void app.offsetWidth;
       }
+      app.classList.toggle("landed", next);
+      vibrate(next ? [10, 40, 10] : 8);
     }
   },
 });

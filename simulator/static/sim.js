@@ -1,22 +1,22 @@
 // iDrone simulator front-end: three.js scene + 60 Hz physics + HUD wiring.
 
 import * as THREE from "/static/lib/three.module.min.js";
-import { connect } from "/static/js/ws.js?v=6";
-import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=6";
-import { buildArena } from "/static/js/arena.js?v=6";
-import { buildDrone } from "/static/js/drone.js?v=6";
-import { buildTrail } from "/static/js/trail.js?v=6";
+import { connect } from "/static/js/ws.js?v=7";
+import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=7";
+import { buildArena } from "/static/js/arena.js?v=7";
+import { buildDrone } from "/static/js/drone.js?v=7";
+import { buildTrail } from "/static/js/trail.js?v=7";
 import {
   buildPedestal,
   buildOrbitCamera,
   STATIONARY_POS,
-} from "/static/js/stationary.js?v=6";
+} from "/static/js/stationary.js?v=7";
 import {
   updateAttitude,
   updateCompass,
   updateTelemetry,
   setLinkStatus,
-} from "/static/js/hud.js?v=6";
+} from "/static/js/hud.js?v=7";
 
 const canvas = document.getElementById("canvas");
 const hintEl = document.getElementById("hud-hint");
@@ -71,6 +71,7 @@ const statOri = { roll: 0, pitch: 0, yaw: 0 };
 // Starts as null so the initial setMode("free") runs through the body and
 // sizes the segmented-thumb (its CSS vars default to 0 width).
 let mode = null; // null | 'free' | 'stationary'
+let landed = false; // true once the user signals (Space) that the drone is on the pad
 
 let trailAccumulator = 0;
 const TRAIL_PUSH_INTERVAL = 1 / 30;
@@ -110,6 +111,7 @@ function handlePhoneMessage(msg) {
         hintEl.classList.add("hidden");
         setLinkStatus({ peer: "connected" });
         sendModeToPhone();
+        sendLandedToPhone();
       } else {
         hintEl.classList.remove("hidden");
         setLinkStatus({ peer: "waiting" });
@@ -187,6 +189,10 @@ function setMode(next, opts = {}) {
     state.vx = state.vy = state.vz = 0;
     ctrl.reset();
   }
+  if (mode !== "stationary" && landed) {
+    landed = false;
+    link.send({ type: "landed", value: false });
+  }
   if (!opts.silent) sendModeToPhone();
 }
 
@@ -207,14 +213,19 @@ for (const btn of modeToggle.querySelectorAll(".mode-opt")) {
   btn.addEventListener("click", () => setMode(btn.dataset.mode));
 }
 
-// Space = drone has landed on the phone (only meaningful in stationary mode).
+// Space toggles "drone is on the pad". Only meaningful in stationary mode.
 window.addEventListener("keydown", (e) => {
   if (e.code !== "Space") return;
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
   if (mode !== "stationary") return;
   e.preventDefault();
-  link.send({ type: "landed" });
+  landed = !landed;
+  link.send({ type: "landed", value: landed });
 });
+
+function sendLandedToPhone() {
+  link.send({ type: "landed", value: landed });
+}
 
 // Initial thumb position once layout has settled.
 requestAnimationFrame(() => setMode("free", { silent: true }));
