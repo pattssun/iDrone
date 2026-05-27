@@ -1,22 +1,22 @@
 // iDrone simulator front-end: three.js scene + 60 Hz physics + HUD wiring.
 
 import * as THREE from "/static/lib/three.module.min.js";
-import { connect } from "/static/js/ws.js?v=10";
-import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=10";
-import { buildArena } from "/static/js/arena.js?v=10";
-import { buildDrone } from "/static/js/drone.js?v=10";
-import { buildTrail } from "/static/js/trail.js?v=10";
+import { connect } from "/static/js/ws.js?v=11";
+import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=11";
+import { buildArena } from "/static/js/arena.js?v=11";
+import { buildDrone } from "/static/js/drone.js?v=11";
+import { buildTrail } from "/static/js/trail.js?v=11";
 import {
   buildPedestal,
   buildOrbitCamera,
   STATIONARY_POS,
-} from "/static/js/stationary.js?v=10";
+} from "/static/js/stationary.js?v=11";
 import {
   updateAttitude,
   updateCompass,
   updateTelemetry,
   setLinkStatus,
-} from "/static/js/hud.js?v=10";
+} from "/static/js/hud.js?v=11";
 
 const canvas = document.getElementById("canvas");
 const hintEl = document.getElementById("hud-hint");
@@ -77,8 +77,7 @@ const statOri = { roll: 0, pitch: 0, yaw: 0 };
 // sizes the segmented-thumb (its CSS vars default to 0 width).
 let mode = null; // null | 'free' | 'stationary'
 let landed = false;  // true once the user signals that the drone is on the pad
-let started = false; // first Space press — phone has been told to play the intro
-let armed = false;   // second Space press — drone is materialized on the desktop
+let armed = false;   // first Space press — drone materializes + phone intro plays
 let droneArmT = -1;  // 0..1 progression of the materialize animation; -1 = idle
 let armFlashLight = null;
 let armRing = null;
@@ -251,40 +250,29 @@ function syncModeThumb() {
 
 for (const btn of modeToggle.querySelectorAll(".mode-opt")) {
   btn.addEventListener("click", () => {
-    // Clicking FLIGHT short-circuits any uncompleted boot steps so the user
-    // can fly immediately even if they never pressed Space.
-    if (btn.dataset.mode === "free") {
-      if (!started) {
-        started = true;
-        landed = true;
-        link.send({ type: "landed", value: true });
-      }
-      if (!armed) armDrone();
+    // Clicking FLIGHT before Space still arms so the user can fly immediately.
+    if (btn.dataset.mode === "free" && !armed) {
+      armDrone();
+      landed = true;
+      link.send({ type: "landed", value: true });
     }
     setMode(btn.dataset.mode);
   });
 }
 
-// Two-step boot via Space, then normal toggle:
-//   Press 1 — tells the phone to play the intro and transition to live.
-//             The desktop drone stays hidden.
-//   Press 2 — materializes the drone onto the pedestal with a brief flash
-//             and an expanding ring (the "engaging" moment).
-//   Press 3+ — toggles the in-flight landed state on the phone.
+// First Space press: drone materializes on the desktop with the back-out
+// scale, light flash, and expanding ring AND the phone fires its intro and
+// transitions to live. Subsequent presses toggle the in-flight landed state.
 window.addEventListener("keydown", (e) => {
   if (e.code !== "Space") return;
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
   if (mode !== "stationary") return;
   e.preventDefault();
 
-  if (!started) {
-    started = true;
-    landed = true;
-    link.send({ type: "landed", value: true });
-    return;
-  }
   if (!armed) {
     armDrone();
+    landed = true;
+    link.send({ type: "landed", value: true });
     return;
   }
   landed = !landed;
