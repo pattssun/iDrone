@@ -1,22 +1,22 @@
 // iDrone simulator front-end: three.js scene + 60 Hz physics + HUD wiring.
 
 import * as THREE from "/static/lib/three.module.min.js";
-import { connect } from "/static/js/ws.js?v=5";
-import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=5";
-import { buildArena } from "/static/js/arena.js?v=5";
-import { buildDrone } from "/static/js/drone.js?v=5";
-import { buildTrail } from "/static/js/trail.js?v=5";
+import { connect } from "/static/js/ws.js?v=6";
+import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=6";
+import { buildArena } from "/static/js/arena.js?v=6";
+import { buildDrone } from "/static/js/drone.js?v=6";
+import { buildTrail } from "/static/js/trail.js?v=6";
 import {
   buildPedestal,
   buildOrbitCamera,
   STATIONARY_POS,
-} from "/static/js/stationary.js?v=5";
+} from "/static/js/stationary.js?v=6";
 import {
   updateAttitude,
   updateCompass,
   updateTelemetry,
   setLinkStatus,
-} from "/static/js/hud.js?v=5";
+} from "/static/js/hud.js?v=6";
 
 const canvas = document.getElementById("canvas");
 const hintEl = document.getElementById("hud-hint");
@@ -206,6 +206,15 @@ function syncModeThumb() {
 for (const btn of modeToggle.querySelectorAll(".mode-opt")) {
   btn.addEventListener("click", () => setMode(btn.dataset.mode));
 }
+
+// Space = drone has landed on the phone (only meaningful in stationary mode).
+window.addEventListener("keydown", (e) => {
+  if (e.code !== "Space") return;
+  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+  if (mode !== "stationary") return;
+  e.preventDefault();
+  link.send({ type: "landed" });
+});
 
 // Initial thumb position once layout has settled.
 requestAnimationFrame(() => setMode("free", { silent: true }));

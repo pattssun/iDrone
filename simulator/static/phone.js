@@ -1,6 +1,6 @@
 // Phone controller — orientation + throttle slider, relayed to the sim.
 
-import { connect } from "/static/js/ws.js?v=5";
+import { connect } from "/static/js/ws.js?v=6";
 
 // --- DOM ---
 const app = document.getElementById("app");
@@ -110,9 +110,17 @@ function applyMode(next) {
     drawThrottle();
     vibrate(12);
   } else {
+    // Returning to free flight implicitly disarms a landed pad.
+    app.classList.remove("landed");
     vibrate(6);
   }
 }
+
+const padReset = document.getElementById("pad-reset");
+padReset?.addEventListener("click", () => {
+  app.classList.remove("landed");
+  vibrate(8);
+});
 
 const link = connect({
   role: "phone",
@@ -122,6 +130,12 @@ const link = connect({
       link.send({ type: "pong", t: msg.t });
     } else if (msg.type === "mode" && typeof msg.value === "string") {
       applyMode(msg.value);
+    } else if (msg.type === "landed") {
+      // Only meaningful while we're acting as a landing pad.
+      if (simMode === "stationary") {
+        app.classList.add("landed");
+        vibrate([10, 40, 10]);
+      }
     }
   },
 });

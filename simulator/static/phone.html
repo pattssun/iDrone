@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>iDrone Controller</title>
-    <link rel="stylesheet" href="/static/phone.css?v=5" />
+    <link rel="stylesheet" href="/static/phone.css?v=6" />
   </head>
   <body>
     <main id="app" class="state-awaiting">
@@ -167,10 +167,12 @@
           <div class="pad-circle"></div>
           <div class="pad-circle"></div>
         </div>
+        <div class="pad-landed-label">DOCKED</div>
+        <button class="pad-reset" id="pad-reset" type="button">TAP TO RE-ARM</button>
       </div>
       <span class="dot stat-conn-dot" id="stat-conn-dot" aria-hidden="true"></span>
     </main>
 
-    <script type="module" src="/static/phone.js?v=5"></script>
+    <script type="module" src="/static/phone.js?v=6"></script>
   </body>
 </html>

@@ -710,6 +710,12 @@ body {
   border: 2px solid rgba(0, 194, 255, 0.9);
   box-shadow: 0 0 24px rgba(0, 194, 255, 0.55);
   animation: pad-pulse 1.6s ease-in-out infinite;
+  transition:
+    left 0.75s cubic-bezier(0.22, 1, 0.36, 1),
+    top  0.75s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.75s ease,
+    border-color 0.75s ease,
+    box-shadow 0.75s ease;
 }
 .pad-circle:nth-child(1) { left: calc(var(--phys-in, 96px) * -1); top: calc(var(--phys-in, 96px) * -1); }
 .pad-circle:nth-child(2) { left: calc(var(--phys-in, 96px) *  1); top: calc(var(--phys-in, 96px) * -1); animation-delay: 0.2s; }
@@ -719,6 +725,74 @@ body {
   0%, 100% { transform: scale(1);    opacity: 0.85; box-shadow: 0 0 18px rgba(0, 194, 255, 0.45); }
   50%      { transform: scale(1.12); opacity: 1.0;  box-shadow: 0 0 32px rgba(0, 194, 255, 0.85); }
 }
+
+/* ----- Landed state: circles merge to center, cyan→green color sweep,
+   then a satisfying check-pulse. Triggered by Space on the desktop. ----- */
+.landed .pad-circle {
+  /* Stop the pulsing motion; replace with the converge+settle sequence. */
+  animation: pad-land-settle 1.6s ease-out 0.65s forwards;
+  left: 0 !important;
+  top: 0 !important;
+  background: radial-gradient(circle, rgba(46, 224, 122, 0.7), rgba(46, 224, 122, 0.08) 70%);
+  border-color: rgba(46, 224, 122, 0.95);
+  box-shadow: 0 0 36px rgba(46, 224, 122, 0.65);
+}
+@keyframes pad-land-settle {
+  0%   { transform: scale(1);    box-shadow: 0 0 36px rgba(46, 224, 122, 0.65); }
+  35%  { transform: scale(1.45); box-shadow: 0 0 64px rgba(46, 224, 122, 0.95); }
+  60%  { transform: scale(0.92); }
+  100% { transform: scale(1.05); box-shadow: 0 0 42px rgba(46, 224, 122, 0.7); }
+}
+
+.landing-pad .pad-label {
+  transition: opacity 0.5s ease;
+}
+.landed .pad-label { opacity: 0; }
+
+/* "DOCKED" label fades in once the circles have merged. */
+.pad-landed-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, calc(var(--phys-in, 96px) * 0.7));
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.34em;
+  color: #2ee07a;
+  text-shadow: 0 0 18px rgba(46, 224, 122, 0.7);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+}
+.landed .pad-landed-label {
+  opacity: 1;
+  transition: opacity 0.5s ease 1.4s;
+}
+
+/* Re-arm button appears after the animation. */
+.pad-reset {
+  position: absolute;
+  bottom: max(env(safe-area-inset-bottom), 28px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 11px 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(46, 224, 122, 0.55);
+  background: rgba(46, 224, 122, 0.1);
+  color: #b9f5d2;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+.landed .pad-reset {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.4s ease 1.6s;
+}
+.pad-reset:active { background: rgba(46, 224, 122, 0.22); }
 
 /* Tiny corner connection dot — visible only in stationary mode */
 .stat-conn-dot {
