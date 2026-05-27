@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no"
+    />
+    <meta name="theme-color" content="#070a0f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>iDrone Controller</title>
+    <link rel="stylesheet" href="/static/phone.css" />
+  </head>
+  <body>
+    <main id="app" class="state-awaiting">
+      <!-- Status bar -->
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">iDrone</span>
+          <span class="brand-sub">CONTROLLER</span>
+        </div>
+        <div class="link">
+          <span class="dot" id="conn-dot"></span>
+          <span class="link-label" id="conn-label">linking</span>
+        </div>
+        <div class="metrics">
+          <span class="metric"><span class="m-v" id="send-rate">--</span><span class="m-u">Hz</span></span>
+        </div>
+      </header>
+
+      <!-- Welcome / permission screen -->
+      <section class="screen awaiting">
+        <div class="welcome">
+          <div class="logo-orbit" aria-hidden="true">
+            <div class="logo-orb"></div>
+            <div class="logo-ring r1"></div>
+            <div class="logo-ring r2"></div>
+            <div class="logo-ring r3"></div>
+          </div>
+          <h1>Hold &amp; tilt to fly</h1>
+          <p>
+            Grip the phone with both hands, tilt to steer, slide the throttle to climb.
+            Safari will ask for motion access — that's the gyro.
+          </p>
+          <button id="start-btn" class="cta">
+            <span>Tap to start</span>
+            <span class="cta-chev">›</span>
+          </button>
+          <p class="hint" id="perm-hint"></p>
+        </div>
+      </section>
+
+      <!-- Calibration screen -->
+      <section class="screen calibrating">
+        <div class="calib">
+          <div class="calib-bubble">
+            <div class="calib-horizon" id="calib-horizon"></div>
+            <div class="calib-target"></div>
+          </div>
+          <h2>Hold level</h2>
+          <p class="calib-count" id="calib-count">3</p>
+          <p class="hint">Find the pose that should feel like hover.</p>
+        </div>
+      </section>
+
+      <!-- Live controller -->
+      <section class="screen live">
+        <div class="stage">
+          <!-- Artificial horizon (mirror of phone tilt) -->
+          <div class="horizon-wrap">
+            <div class="horizon">
+              <div class="horizon-clip">
+                <div class="horizon-body" id="horizon-body">
+                  <div class="horizon-sky"></div>
+                  <div class="horizon-ground"></div>
+                  <div class="horizon-line"></div>
+                  <div class="horizon-ladder"></div>
+                </div>
+              </div>
+              <div class="horizon-bezel"></div>
+              <div class="horizon-roll-marks"></div>
+              <div class="horizon-roll-pointer" id="horizon-roll-pointer"></div>
+              <div class="horizon-reticle"><span>+</span></div>
+              <div class="horizon-corners">
+                <span class="corner tl"></span>
+                <span class="corner tr"></span>
+                <span class="corner bl"></span>
+                <span class="corner br"></span>
+              </div>
+            </div>
+            <div class="horizon-readouts">
+              <div class="ro"><span class="ro-k">P</span><span class="ro-v" id="r-pitch">+0&deg;</span></div>
+              <div class="ro"><span class="ro-k">R</span><span class="ro-v" id="r-roll">+0&deg;</span></div>
+              <div class="ro"><span class="ro-k">Y</span><span class="ro-v" id="r-yaw">+0&deg;</span></div>
+            </div>
+          </div>
+
+          <!-- Throttle column -->
+          <div class="throttle-col">
+            <div class="throttle-pct">
+              <span id="thr-pct">50</span><span class="thr-unit">%</span>
+            </div>
+            <div class="throttle-stack">
+              <div class="throttle-axis-label up">▲ CLIMB</div>
+              <div class="throttle" id="throttle">
+                <div class="thr-track">
+                  <div class="thr-mid"></div>
+                  <div class="thr-fill" id="thr-fill"></div>
+                  <div class="thr-knob" id="thr-knob">
+                    <div class="thr-knob-bar"></div>
+                  </div>
+                </div>
+                <div class="thr-ladder">
+                  <span></span><span></span><span></span><span></span>
+                  <span class="mid"></span>
+                  <span></span><span></span><span></span><span></span>
+                </div>
+              </div>
+              <div class="throttle-axis-label down">▼ DROP</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action chips -->
+        <div class="dock">
+          <button class="chip" id="calibrate-btn">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+              <line x1="12" y1="1" x2="12" y2="4" stroke="currentColor" stroke-width="1.5"/>
+              <line x1="12" y1="20" x2="12" y2="23" stroke="currentColor" stroke-width="1.5"/>
+              <line x1="1" y1="12" x2="4" y2="12" stroke="currentColor" stroke-width="1.5"/>
+              <line x1="20" y1="12" x2="23" y2="12" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+            <span>Calibrate</span>
+          </button>
+          <button class="chip danger" id="reset-btn">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-3-6.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <polyline points="21 4 21 9 16 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Reset</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Tiny activity tick so packets-flowing feel alive -->
+      <div class="pulse" id="pulse" aria-hidden="true"></div>
+    </main>
+
+    <script type="module" src="/static/phone.js"></script>
+  </body>
+</html>

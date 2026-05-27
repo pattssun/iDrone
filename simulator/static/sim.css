@@ -1,0 +1,286 @@
+:root {
+  --bg: #0a0d12;
+  --bg-card: rgba(18, 22, 28, 0.78);
+  --line: rgba(0, 194, 255, 0.18);
+  --accent: #00c2ff;
+  --text: #e6edf3;
+  --muted: #7a8290;
+  --good: #33d17a;
+  --warn: #ffa630;
+  --bad: #ff453a;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, "SF Pro Text", "Inter", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  overflow: hidden;
+}
+
+#canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+}
+
+.hud {
+  position: fixed;
+  z-index: 2;
+  pointer-events: none;
+}
+.hud .card {
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 14px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* top bar */
+.hud.top {
+  top: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 12px 18px;
+  background: linear-gradient(180deg, rgba(10, 13, 18, 0.85), rgba(10, 13, 18, 0));
+}
+.hud.top .left { display: flex; align-items: center; gap: 10px; }
+.hud.top .right {
+  display: flex;
+  justify-content: flex-end;
+  gap: 20px;
+}
+.hud.top .center { display: flex; align-items: center; gap: 8px; justify-self: center; }
+
+.brand {
+  font-family: var(--mono);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+}
+.badge {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--bad);
+}
+.dot.linking { background: var(--warn); animation: pulse 1s infinite alternate; }
+.dot.live { background: var(--good); animation: pulse 1.4s infinite alternate; }
+@keyframes pulse {
+  from { box-shadow: 0 0 0 0 rgba(51, 209, 122, 0); }
+  to   { box-shadow: 0 0 0 6px rgba(51, 209, 122, 0.18); }
+}
+
+.label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--text);
+}
+
+.kv {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.kv .k {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+.kv .v {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* attitude indicator */
+.hud.att { left: 24px; bottom: 28px; }
+.att-card {
+  width: 158px;
+  padding: 12px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.att-frame {
+  position: relative;
+  width: 130px;
+  height: 130px;
+  margin: 0 auto;
+}
+.att-clip {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.att-body {
+  position: absolute;
+  left: -50%;
+  top: -50%;
+  width: 200%;
+  height: 200%;
+  transform-origin: 50% 50%;
+}
+.att-sky { position: absolute; left: 0; right: 0; top: 0; height: 50%; background: linear-gradient(180deg, #1e5da8, #4682cd); }
+.att-ground { position: absolute; left: 0; right: 0; bottom: 0; height: 50%; background: linear-gradient(0deg, #6b4f2a, #b08344); }
+.att-horizon { position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: var(--text); transform: translateY(-1px); }
+.att-ladder {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(0deg, transparent calc(50% - 30px), rgba(255,255,255,0.4) calc(50% - 30px), rgba(255,255,255,0.4) calc(50% - 29px), transparent calc(50% - 29px)),
+    linear-gradient(0deg, transparent calc(50% + 30px), rgba(255,255,255,0.4) calc(50% + 30px), rgba(255,255,255,0.4) calc(50% + 31px), transparent calc(50% + 31px)),
+    linear-gradient(0deg, transparent calc(50% - 60px), rgba(255,255,255,0.25) calc(50% - 60px), rgba(255,255,255,0.25) calc(50% - 59px), transparent calc(50% - 59px)),
+    linear-gradient(0deg, transparent calc(50% + 60px), rgba(255,255,255,0.25) calc(50% + 60px), rgba(255,255,255,0.25) calc(50% + 61px), transparent calc(50% + 61px));
+}
+.att-reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: #ffa630;
+  font-family: var(--mono);
+  font-size: 22px;
+  line-height: 1;
+  text-shadow: 0 0 4px rgba(0,0,0,0.6);
+}
+.att-label {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* compass */
+.hud.compass { left: 50%; transform: translateX(-50%); bottom: 28px; }
+.compass-card {
+  width: 360px;
+  padding: 10px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.compass-window {
+  position: relative;
+  height: 38px;
+  margin: 0 18px;
+  overflow: hidden;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+.compass-strip {
+  position: absolute;
+  top: 0;
+  /* Strip is 4 px per degree, -180..+540 = 720°*4 = 2880 px. Centre by offsetting
+     the strip so deg=0 sits under the reticle (at 50% of window width). */
+  left: calc(50% - 720px);
+  width: 2880px;
+  height: 100%;
+  will-change: transform;
+}
+.compass-strip .tick {
+  position: absolute;
+  top: 8px;
+  width: 1px;
+  height: 8px;
+  background: var(--muted);
+}
+.compass-strip .tick.mid { height: 14px; }
+.compass-strip .tick.major { height: 22px; background: var(--text); }
+.compass-strip .tick span {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.compass-strip .tick.major span { color: var(--text); font-size: 12px; }
+.compass-reticle {
+  position: absolute;
+  left: 50%;
+  top: 36px;
+  transform: translate(-50%, 0);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid var(--accent);
+}
+.compass-label {
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+}
+
+/* telemetry */
+.hud.tel { right: 24px; bottom: 28px; }
+.tel-card {
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tel-card .row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: baseline;
+  gap: 6px;
+}
+.tel-card .k {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+.tel-card .v {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  color: var(--text);
+  text-align: right;
+}
+.tel-card .pos .v { display: grid; grid-template-columns: 16px 1fr 16px 1fr 16px 1fr; gap: 4px; font-size: 13px; text-align: right; }
+.tel-card .pos .ax { color: var(--accent); text-align: right; }
+
+/* hint card */
+.hud.hint {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.25s;
+  text-align: center;
+}
+.hud.hint .card { padding: 18px 24px; }
+.hint-title { font-family: var(--mono); color: var(--accent); font-size: 14px; letter-spacing: 0.1em; margin-bottom: 4px; }
+.hint-body { font-size: 13px; color: var(--muted); }
+.accent { color: var(--accent); }
+.hud.hint.hidden { opacity: 0; pointer-events: none; }

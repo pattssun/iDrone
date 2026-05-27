@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>iDrone Simulator</title>
+    <link rel="stylesheet" href="/static/sim.css" />
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+
+    <!-- Top bar -->
+    <header class="hud top">
+      <div class="left">
+        <span class="brand">iDrone</span>
+        <span class="badge">SIMULATOR</span>
+      </div>
+      <div class="center">
+        <span class="dot" id="hud-state-dot"></span>
+        <span class="label" id="hud-state">WAITING</span>
+      </div>
+      <div class="right">
+        <span class="kv"><span class="k">LAT</span><span class="v"><span id="hud-lat">--</span> ms</span></span>
+        <span class="kv"><span class="k">RATE</span><span class="v"><span id="hud-rate">--</span> Hz</span></span>
+        <span class="kv"><span class="k">FPS</span><span class="v" id="hud-fps">--</span></span>
+      </div>
+    </header>
+
+    <!-- Attitude indicator (bottom-left) -->
+    <div class="hud att">
+      <div class="card att-card">
+        <div class="att-frame">
+          <div class="att-clip">
+            <div class="att-body" id="att-body">
+              <div class="att-sky"></div>
+              <div class="att-ground"></div>
+              <div class="att-horizon"></div>
+              <div class="att-ladder"></div>
+            </div>
+          </div>
+          <div class="att-reticle" id="att-reticle">+</div>
+        </div>
+        <div class="att-label">ATTITUDE</div>
+      </div>
+    </div>
+
+    <!-- Compass tape (bottom-center) -->
+    <div class="hud compass">
+      <div class="card compass-card">
+        <div class="compass-window">
+          <div class="compass-strip" id="compass-strip"></div>
+        </div>
+        <div class="compass-reticle"></div>
+        <div class="compass-label">HEADING</div>
+      </div>
+    </div>
+
+    <!-- Telemetry (bottom-right) -->
+    <aside class="hud tel">
+      <div class="card tel-card">
+        <div class="row"><span class="k">ALT</span><span class="v" id="v-alt">0.0 m</span></div>
+        <div class="row"><span class="k">V-SPD</span><span class="v" id="v-vsp">+0.0</span></div>
+        <div class="row"><span class="k">H-SPD</span><span class="v" id="v-hsp">0.0</span></div>
+        <div class="row"><span class="k">THR</span><span class="v" id="v-thr">50%</span></div>
+        <div class="row pos"><span class="k">POS</span>
+          <span class="v">
+            <span class="ax">x</span><span id="v-x">+0.0</span>
+            <span class="ax">y</span><span id="v-y">+0.0</span>
+            <span class="ax">z</span><span id="v-z">+0.0</span>
+          </span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Hint (only when no phone connected) -->
+    <div class="hud hint" id="hud-hint">
+      <div class="card">
+        <div class="hint-title">Waiting for phone…</div>
+        <div class="hint-body">
+          Open the <span class="accent">phone URL</span> printed in your terminal,
+          or scan the QR code with your iPhone.
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/static/sim.js"></script>
+  </body>
+</html>
