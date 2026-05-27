@@ -80,10 +80,12 @@ function flashPulse() {
 // --- WebSocket link ---
 let simMode = "free"; // mirrors the sim's current display mode
 function applyMode(next) {
+  console.log("[phone] applyMode", next, "(was", simMode + ")");
   if (next !== "free" && next !== "stationary") return;
   if (simMode === next) return;
   simMode = next;
   app.classList.toggle("mode-stationary", simMode === "stationary");
+  console.log("[phone] body classList:", app.className);
   if (simMode === "stationary") {
     // Throttle is irrelevant — show it locked, force value to neutral.
     throttle = 0.5;

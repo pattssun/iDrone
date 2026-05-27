@@ -657,11 +657,24 @@ body {
   z-index: 4;
   background: #070a0f;
 }
-.mode-stationary .landing-pad { display: flex; }
+.mode-stationary .landing-pad { display: flex; flex-direction: column; }
+.landing-pad .pad-label {
+  position: absolute;
+  top: max(env(safe-area-inset-top), 18px);
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  color: var(--accent);
+  text-shadow: 0 0 14px rgba(0, 194, 255, 0.6);
+}
 .landing-pad .pad-grid {
   display: grid;
   grid-template-columns: 2in 2in;
   grid-template-rows: 2in 2in;
+  margin: auto;
 }
 .pad-circle {
   width: 0.55in;
