@@ -103,7 +103,7 @@ export function buildOrbitCamera(canvas, camera, target) {
   let active = false;
   let azimuth = Math.PI; // facing -Z initially → camera is on +Z side, looking at origin
   let elevation = 0.35; // ~20°
-  let distance = 6.5;
+  let distance = 5.2; // 20% closer than previous default (was 6.5) — drone reads bigger
   const minDist = 2.0;
   const maxDist = 14.0;
   const minEl = -1.2;

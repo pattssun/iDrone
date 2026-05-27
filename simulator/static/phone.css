@@ -615,14 +615,388 @@ body {
   /* pointer-events default so it blocks input on the track behind it */
   z-index: 2;
 }
-.mode-stationary .thr-locked { display: flex; }
-.mode-stationary .thr-track { touch-action: auto; }
-.mode-stationary .thr-knob,
-.mode-stationary .thr-fill,
-.mode-stationary .throttle-pct,
-.mode-stationary .throttle-axis-label,
-.mode-stationary .thr-mid,
-.mode-stationary .thr-ladder { opacity: 0.35; }
+/* Stationary mode: phone becomes a landing pad. Hide flight UI, show pad. */
+.mode-stationary .topbar,
+.mode-stationary .horizon-wrap,
+.mode-stationary .throttle-col,
+.mode-stationary .pulse,
+.mode-stationary .screen.awaiting,
+.mode-stationary .screen.calibrating { display: none; }
+
+.mode-stationary .screen.live {
+  padding: 0;
+  gap: 0;
+}
+
+/* keep Calibrate / Reset chips reachable, small and out of the way */
+.state-live.mode-stationary .dock {
+  position: fixed;
+  bottom: max(env(safe-area-inset-bottom), 14px);
+  left: 14px;
+  right: 14px;
+  gap: 10px;
+  pointer-events: auto;
+  z-index: 6;
+}
+.state-live.mode-stationary .chip {
+  padding: 8px 10px;
+  font-size: 11.5px;
+  background: rgba(8, 14, 22, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Always-visible mode badge (small floating chip in the top-left corner) */
+.mode-badge {
+  position: fixed;
+  top: max(env(safe-area-inset-top), 8px);
+  left: 10px;
+  z-index: 20;
+  padding: 4px 9px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--text);
+  background: rgba(8, 14, 22, 0.85);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  pointer-events: none;
+}
+.mode-stationary .mode-badge {
+  color: #001722;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Landing pad — the welcome surface AND the in-flight stationary overlay.
+   In awaiting state it's the boot screen; in mode-stationary it's the
+   mid-flight re-dock surface. Tappable so the user can grant gyro permission. */
+.landing-pad {
+  display: none;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  background: #070a0f;
+}
+.state-awaiting .landing-pad,
+.state-docking .landing-pad,
+.mode-stationary .landing-pad { display: block; }
+/* In awaiting/docking the pad accepts taps (gyro permission). */
+.state-awaiting .landing-pad,
+.state-docking .landing-pad { pointer-events: auto; }
+
+/* Hide the original "Tap to start" welcome content — the pad replaces it. */
+.state-awaiting .screen.awaiting > .welcome { display: none; }
+
+.landing-pad .pad-label {
+  position: absolute;
+  top: max(env(safe-area-inset-top), 40px);
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  color: var(--accent);
+  text-shadow: 0 0 14px rgba(0, 194, 255, 0.6);
+  transition: opacity 0.5s ease, color 0.5s ease;
+}
+.landing-pad .pad-label::before { content: "STATIONARY · LANDING PAD"; }
+.state-awaiting .landing-pad .pad-label::before {
+  content: "PLACE DRONE · TAP TO ARM";
+}
+.state-awaiting.pad-armed .landing-pad .pad-label::before {
+  content: "ARMED";
+}
+.state-docking .landing-pad .pad-label { opacity: 0; }
+
+/* "READY" pip appears once the user has tapped the pad to grant motion access. */
+.pad-ready {
+  position: absolute;
+  top: max(env(safe-area-inset-top), 68px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  border: 1px solid rgba(46, 224, 122, 0.55);
+  border-radius: 999px;
+  background: rgba(46, 224, 122, 0.12);
+  color: #b9f5d2;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.34em;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+.pad-armed .pad-ready { opacity: 1; }
+
+/* "Tap to enable motion" — fallback if we got to live without gyro permission. */
+.motion-grant {
+  position: fixed;
+  bottom: max(env(safe-area-inset-bottom), 28px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 12px 22px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgba(0, 194, 255, 0.14);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  display: none;
+}
+.motion-grant.show { display: inline-flex; animation: motion-grant-pulse 1.6s ease-in-out infinite; }
+@keyframes motion-grant-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 194, 255, 0); }
+  50%      { box-shadow: 0 0 0 8px rgba(0, 194, 255, 0.18); }
+}
+/* The pad-grid is a 0-size point at screen center; circles are absolutely
+   positioned relative to it. Guarantees symmetry regardless of viewport. */
+.landing-pad .pad-grid {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+}
+.pad-circle {
+  position: absolute;
+  width: calc(var(--phys-in, 96px) * 0.75);
+  height: calc(var(--phys-in, 96px) * 0.75);
+  margin-left: calc(var(--phys-in, 96px) * -0.375);
+  margin-top: calc(var(--phys-in, 96px) * -0.375);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 194, 255, 0.55), rgba(0, 194, 255, 0.05) 72%);
+  border: 2px solid rgba(0, 194, 255, 0.9);
+  box-shadow: 0 0 24px rgba(0, 194, 255, 0.55);
+  animation: pad-pulse 1.6s ease-in-out infinite;
+  transition:
+    left 0.75s cubic-bezier(0.22, 1, 0.36, 1),
+    top  0.75s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.75s ease,
+    border-color 0.75s ease,
+    box-shadow 0.75s ease;
+}
+.pad-circle:nth-child(1) { left: calc(var(--phys-in, 96px) * -1); top: calc(var(--phys-in, 96px) * -1); }
+.pad-circle:nth-child(2) { left: calc(var(--phys-in, 96px) *  1); top: calc(var(--phys-in, 96px) * -1); animation-delay: 0.2s; }
+.pad-circle:nth-child(3) { left: calc(var(--phys-in, 96px) * -1); top: calc(var(--phys-in, 96px) *  1); animation-delay: 0.4s; }
+.pad-circle:nth-child(4) { left: calc(var(--phys-in, 96px) *  1); top: calc(var(--phys-in, 96px) *  1); animation-delay: 0.6s; }
+@keyframes pad-pulse {
+  0%, 100% { transform: scale(1);    opacity: 0.85; box-shadow: 0 0 18px rgba(0, 194, 255, 0.45); }
+  50%      { transform: scale(1.12); opacity: 1.0;  box-shadow: 0 0 32px rgba(0, 194, 255, 0.85); }
+}
+
+/* ----- Landed state: circles stay at corners but glow much bigger so the
+   green is visible AROUND the drone, plus outward sonar ripples and a
+   steady outer halo. Triggered by Space on the desktop (Space toggles). ----- */
+
+/* Corner circles intensify + grow on landing — their oversized glow leaks
+   well past the drone footprint where it can actually be seen. */
+.landed .pad-circle {
+  width: calc(var(--phys-in, 96px) * 0.95);
+  height: calc(var(--phys-in, 96px) * 0.95);
+  margin-left: calc(var(--phys-in, 96px) * -0.475);
+  margin-top: calc(var(--phys-in, 96px) * -0.475);
+  background: radial-gradient(circle, rgba(46, 224, 122, 0.85), rgba(46, 224, 122, 0.08) 72%);
+  border-color: rgba(46, 224, 122, 1.0);
+  animation: docked-corner-glow 2.4s ease-in-out infinite;
+}
+@keyframes docked-corner-glow {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 60px  rgba(46, 224, 122, 0.7),
+      0 0 130px rgba(46, 224, 122, 0.45),
+      0 0 220px rgba(46, 224, 122, 0.18);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow:
+      0 0 80px  rgba(46, 224, 122, 0.9),
+      0 0 170px rgba(46, 224, 122, 0.6),
+      0 0 280px rgba(46, 224, 122, 0.28);
+  }
+}
+
+/* Big soft halo around the drone footprint — transparent in the middle
+   (where the drone sits) and peak intensity just past its outer edge. */
+.pad-aura {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width:  calc(var(--phys-in, 96px) * 5.2);
+  height: calc(var(--phys-in, 96px) * 5.2);
+  margin-left: calc(var(--phys-in, 96px) * -2.6);
+  margin-top:  calc(var(--phys-in, 96px) * -2.6);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    transparent 22%,
+    rgba(46, 224, 122, 0.45) 36%,
+    rgba(46, 224, 122, 0.18) 50%,
+    transparent 66%
+  );
+  opacity: 0;
+  transition: opacity 0.8s ease;
+  pointer-events: none;
+  filter: blur(2px);
+}
+.landed .pad-aura {
+  opacity: 1;
+  animation: aura-breathe 2.6s ease-in-out infinite;
+}
+@keyframes aura-breathe {
+  0%, 100% { transform: scale(1);    opacity: 0.9; }
+  50%      { transform: scale(1.06); opacity: 1.0; }
+}
+
+/* Three radiating ripples on the instant of landing — sonar feel. They
+   only animate while the .landed class is present; toggling off cancels. */
+.pad-ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width:  calc(var(--phys-in, 96px) * 3.2);
+  height: calc(var(--phys-in, 96px) * 3.2);
+  margin-left: calc(var(--phys-in, 96px) * -1.6);
+  margin-top:  calc(var(--phys-in, 96px) * -1.6);
+  border-radius: 50%;
+  border: 2px solid rgba(46, 224, 122, 0.85);
+  box-shadow: 0 0 18px rgba(46, 224, 122, 0.5);
+  opacity: 0;
+  pointer-events: none;
+}
+.landed .pad-ripple {
+  animation: ripple-out 1.9s ease-out forwards;
+}
+.landed .pad-ripple:nth-of-type(2) { animation-delay: 0.22s; }
+.landed .pad-ripple:nth-of-type(3) { animation-delay: 0.44s; }
+@keyframes ripple-out {
+  0%   { transform: scale(0.55); opacity: 0;   border-width: 3px; }
+  18%  {                          opacity: 0.95;                   }
+  100% { transform: scale(1.85); opacity: 0;   border-width: 1px; }
+}
+
+.landing-pad .pad-label {
+  transition: opacity 0.45s ease;
+}
+.landed .pad-label { opacity: 0; }
+
+/* "DOCKED" label sits well below the drone footprint so it's actually visible. */
+.pad-landed-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, calc(var(--phys-in, 96px) * 1.7));
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: #b9f5d2;
+  text-shadow: 0 0 20px rgba(46, 224, 122, 0.85);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.landed .pad-landed-label {
+  opacity: 1;
+  transition: opacity 0.5s ease 1.0s;
+}
+
+/* ----- Intro animation (state-docking): the drone "powers on" with a
+   vertical energy beam shooting up out of the pad, a flash burst above
+   the drone, and the corner circles intensifying as they hand off the
+   energy. Plays once per page session on first dock. ----- */
+.intro-beam {
+  position: absolute;
+  bottom: 50%;
+  left: 50%;
+  width:  calc(var(--phys-in, 96px) * 0.45);
+  height: calc(var(--phys-in, 96px) * 3.4);
+  margin-left: calc(var(--phys-in, 96px) * -0.225);
+  border-radius: 999px;
+  background: linear-gradient(
+    to top,
+    transparent 0%,
+    rgba(46, 224, 122, 0.65) 18%,
+    rgba(140, 255, 200, 0.95) 55%,
+    rgba(255, 255, 255, 1.0)  90%,
+    rgba(255, 255, 255, 0.7) 100%
+  );
+  filter: blur(6px);
+  transform-origin: bottom center;
+  transform: scaleY(0);
+  opacity: 0;
+  pointer-events: none;
+}
+.state-docking .intro-beam {
+  animation: beam-rise 1.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes beam-rise {
+  0%   { transform: scaleY(0.0); opacity: 0;   }
+  10%  {                          opacity: 0.6; }
+  35%  { transform: scaleY(1.0); opacity: 1.0; }
+  70%  { transform: scaleY(1.05); opacity: 0.9; }
+  100% { transform: scaleY(1.1);  opacity: 0;   }
+}
+
+.intro-flash {
+  position: absolute;
+  bottom: 50%;
+  left: 50%;
+  width:  calc(var(--phys-in, 96px) * 3.4);
+  height: calc(var(--phys-in, 96px) * 3.4);
+  margin-left: calc(var(--phys-in, 96px) * -1.7);
+  margin-bottom: calc(var(--phys-in, 96px) * 2.2);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 1.0) 0%,
+    rgba(180, 255, 210, 0.85) 22%,
+    rgba(46, 224, 122, 0.5)   45%,
+    transparent 72%
+  );
+  filter: blur(3px);
+  opacity: 0;
+  pointer-events: none;
+}
+.state-docking .intro-flash {
+  animation: flash-burst 1.0s cubic-bezier(0.22, 1, 0.36, 1) 0.55s forwards;
+}
+@keyframes flash-burst {
+  0%   { transform: scale(0.15); opacity: 0;   }
+  35%  { transform: scale(1.0);  opacity: 1.0; }
+  65%  { transform: scale(1.6);  opacity: 0.5; }
+  100% { transform: scale(2.4);  opacity: 0;   }
+}
+
+/* During the intro the corner circles intensify in sync with the beam. */
+.state-docking .pad-circle {
+  animation: pad-intro-pulse 1.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes pad-intro-pulse {
+  0%   { transform: scale(1);     box-shadow: 0 0 22px rgba(0, 194, 255, 0.45); }
+  35%  { transform: scale(1.2);   box-shadow: 0 0 60px rgba(140, 255, 200, 0.9); }
+  100% { transform: scale(1);     box-shadow: 0 0 22px rgba(0, 194, 255, 0.45); }
+}
+
+
+/* Tiny corner connection dot — visible only in stationary mode */
+.stat-conn-dot {
+  display: none;
+  position: fixed;
+  top: max(env(safe-area-inset-top), 10px);
+  right: 14px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 6;
+}
+.mode-stationary .stat-conn-dot { display: block; }
 
 /* dock */
 .dock {

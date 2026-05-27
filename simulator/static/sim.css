@@ -295,14 +295,14 @@ html, body {
 /* telemetry */
 .hud.tel { right: 24px; bottom: 28px; }
 .tel-card {
-  width: 220px;
+  width: 268px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 .tel-card .row {
   display: grid;
-  grid-template-columns: 64px 1fr;
+  grid-template-columns: 56px 1fr;
   align-items: baseline;
   gap: 6px;
 }
@@ -318,8 +318,9 @@ html, body {
   color: var(--text);
   text-align: right;
 }
-.tel-card .pos .v { display: grid; grid-template-columns: 16px 1fr 16px 1fr 16px 1fr; gap: 4px; font-size: 13px; text-align: right; }
+.tel-card .pos .v { display: grid; grid-template-columns: 12px 1fr 12px 1fr 12px 1fr; gap: 3px; font-size: 12px; text-align: right; min-width: 0; }
 .tel-card .pos .ax { color: var(--accent); text-align: right; }
+.tel-card .pos .v > span:not(.ax) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* stationary mode adjustments */
 body.mode-stationary .tel-card .row.pos,

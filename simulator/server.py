@@ -98,12 +98,17 @@ async def token_middleware(request: web.Request, handler):
     return await handler(request)
 
 
+def _nocache(resp: web.FileResponse) -> web.FileResponse:
+    resp.headers["Cache-Control"] = "no-store, must-revalidate"
+    return resp
+
+
 async def index_sim(request: web.Request) -> web.FileResponse:
-    return web.FileResponse(STATIC_DIR / "sim.html")
+    return _nocache(web.FileResponse(STATIC_DIR / "sim.html"))
 
 
 async def index_phone(request: web.Request) -> web.FileResponse:
-    return web.FileResponse(STATIC_DIR / "phone.html")
+    return _nocache(web.FileResponse(STATIC_DIR / "phone.html"))
 
 
 async def static_handler(request: web.Request) -> web.FileResponse:
@@ -113,7 +118,7 @@ async def static_handler(request: web.Request) -> web.FileResponse:
         raise web.HTTPForbidden()
     if not target.is_file():
         raise web.HTTPNotFound()
-    return web.FileResponse(target)
+    return _nocache(web.FileResponse(target))
 
 
 def _ws_handler_factory(role: str):

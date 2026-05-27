@@ -1,6 +1,6 @@
 // Phone controller — orientation + throttle slider, relayed to the sim.
 
-import { connect } from "/static/js/ws.js";
+import { connect } from "/static/js/ws.js?v=12";
 
 // --- DOM ---
 const app = document.getElementById("app");
@@ -11,6 +11,23 @@ const calibHorizon = document.getElementById("calib-horizon");
 const calibrateBtn = document.getElementById("calibrate-btn");
 const resetBtn = document.getElementById("reset-btn");
 const connDot = document.getElementById("conn-dot");
+const statConnDot = document.getElementById("stat-conn-dot");
+const modeBadge = document.getElementById("mode-badge");
+
+// CSS "1in" is always 96px regardless of device; on phones that's well under
+// a physical inch. Estimate true physical-inch-in-CSS-px from device pixel
+// ratio (iPhones: 460 device PPI at DPR 3, 326 at DPR 2) and expose as a
+// CSS variable so the landing pad can size to a real-world 2"x2".
+(function calibratePhysicalInch() {
+  const dpr = window.devicePixelRatio || 1;
+  const ua = navigator.userAgent;
+  const isiOS = /iPhone|iPad|iPod/.test(ua);
+  const isAndroid = /Android/.test(ua);
+  let pxPerInch = 96;
+  if (isiOS) pxPerInch = dpr >= 3 ? 153 : 163;
+  else if (isAndroid) pxPerInch = dpr >= 3 ? 150 : dpr >= 2 ? 160 : 96;
+  document.documentElement.style.setProperty("--phys-in", `${pxPerInch}px`);
+})();
 const connLabel = document.getElementById("conn-label");
 const rateEl = document.getElementById("send-rate");
 const rPitch = document.getElementById("r-pitch");
@@ -46,20 +63,19 @@ let pulseLastAt = 0;
 // --- Helpers ---
 function setStateClass(s) {
   state = s;
-  app.classList.remove("state-awaiting", "state-calibrating", "state-live");
+  app.classList.remove("state-awaiting", "state-calibrating", "state-docking", "state-live");
   app.classList.add(`state-${s}`);
 }
 function setConn(s) {
-  connDot.classList.remove("linking", "live");
-  if (s === "live") {
-    connDot.classList.add("live");
-    connLabel.textContent = "Live";
-  } else if (s === "linking") {
-    connDot.classList.add("linking");
-    connLabel.textContent = "Linking";
-  } else {
-    connLabel.textContent = "Dropped";
+  for (const d of [connDot, statConnDot]) {
+    if (!d) continue;
+    d.classList.remove("linking", "live");
+    if (s === "live") d.classList.add("live");
+    else if (s === "linking") d.classList.add("linking");
   }
+  if (s === "live") connLabel.textContent = "Live";
+  else if (s === "linking") connLabel.textContent = "Linking";
+  else connLabel.textContent = "Dropped";
 }
 function wrapDelta(d) {
   return ((d + 540) % 360) - 180;
@@ -80,10 +96,13 @@ function flashPulse() {
 // --- WebSocket link ---
 let simMode = "free"; // mirrors the sim's current display mode
 function applyMode(next) {
+  console.log("[phone] applyMode", next, "(was", simMode + ")");
   if (next !== "free" && next !== "stationary") return;
   if (simMode === next) return;
   simMode = next;
   app.classList.toggle("mode-stationary", simMode === "stationary");
+  if (modeBadge) modeBadge.textContent = simMode.toUpperCase();
+  console.log("[phone] body classList:", app.className);
   if (simMode === "stationary") {
     // Throttle is irrelevant — show it locked, force value to neutral.
     throttle = 0.5;
@@ -91,9 +110,12 @@ function applyMode(next) {
     drawThrottle();
     vibrate(12);
   } else {
+    // Returning to free flight implicitly disarms a landed pad.
+    app.classList.remove("landed");
     vibrate(6);
   }
 }
+
 
 const link = connect({
   role: "phone",
@@ -103,6 +125,21 @@ const link = connect({
       link.send({ type: "pong", t: msg.t });
     } else if (msg.type === "mode" && typeof msg.value === "string") {
       applyMode(msg.value);
+    } else if (msg.type === "landed") {
+      const next = !!msg.value;
+      if (state === "awaiting" || state === "docking") {
+        // Boot path: Space on the desktop is the user's "start" gesture.
+        if (next) performDock();
+        return;
+      }
+      // In-flight path: only meaningful while the pad is showing (stationary).
+      if (simMode !== "stationary") return;
+      if (next && app.classList.contains("landed")) {
+        app.classList.remove("landed");
+        void app.offsetWidth;
+      }
+      app.classList.toggle("landed", next);
+      vibrate(next ? [10, 40, 10] : 8);
     }
   },
 });
@@ -188,17 +225,75 @@ async function requestPermission() {
   return true;
 }
 
-startBtn.addEventListener("click", async () => {
-  startBtn.disabled = true;
-  const ok = await requestPermission();
-  if (!ok) {
-    startBtn.disabled = false;
-    return;
-  }
+// --- Pad-based welcome / docking flow ---
+let gyroPermissionGranted = false;
+let introPlayed = false;
+const landingPadEl = document.getElementById("landing-pad");
+const motionGrantBtn = document.getElementById("motion-grant");
+
+// Browsers that don't gate motion behind a user gesture (Android Chrome,
+// desktop) can be auto-armed at load so Space alone starts the flow.
+(function autoArmIfNoPermissionGate() {
+  const gated =
+    typeof DeviceOrientationEvent !== "undefined" &&
+    typeof DeviceOrientationEvent.requestPermission === "function";
+  if (gated) return;
+  gyroPermissionGranted = true;
   window.addEventListener("deviceorientation", onOrientation);
+  app.classList.add("pad-armed");
+})();
+
+async function armPadFromUserGesture() {
+  if (gyroPermissionGranted) return true;
+  const ok = await requestPermission();
+  if (!ok) return false;
+  gyroPermissionGranted = true;
+  window.addEventListener("deviceorientation", onOrientation);
+  app.classList.add("pad-armed");
   vibrate(8);
-  startCalibration();
+  motionGrantBtn?.classList.remove("show");
+  return true;
+}
+
+// Tap on the pad (only meaningful while it's the welcome surface).
+landingPadEl?.addEventListener("click", (e) => {
+  if (state !== "awaiting" && state !== "docking") return;
+  // Don't intercept if the user happens to tap a child button.
+  if (e.target.closest("button")) return;
+  armPadFromUserGesture();
 });
+
+// Fallback motion-grant button (shown only if we reached live without perm).
+motionGrantBtn?.addEventListener("click", armPadFromUserGesture);
+
+// Original "Tap to start" button is hidden by CSS but keep it as a safety net.
+startBtn?.addEventListener("click", async () => {
+  await armPadFromUserGesture();
+});
+
+async function performDock() {
+  // Snapshot the current orientation as the calibration baseline — the
+  // phone is laying flat with the drone on it, which is the "level" pose.
+  if (lastOrient && (lastOrient.beta !== 0 || lastOrient.gamma !== 0 || lastOrient.alpha !== 0)) {
+    baseline = { b: lastOrient.beta, g: lastOrient.gamma, a: lastOrient.alpha };
+  }
+  if (!introPlayed) {
+    introPlayed = true;
+    setStateClass("docking");
+    vibrate([10, 40, 10]);
+    // Match the intro animation duration (beam-rise + flash-burst).
+    setTimeout(() => {
+      setStateClass("live");
+      // If the user never tapped the pad (no gyro permission), surface the
+      // fallback prompt on the live screen so they can still get motion.
+      if (!gyroPermissionGranted) motionGrantBtn?.classList.add("show");
+    }, 1700);
+  } else {
+    // Subsequent dock from the welcome state: skip the intro, hop to live.
+    setStateClass("live");
+    if (!gyroPermissionGranted) motionGrantBtn?.classList.add("show");
+  }
+}
 
 calibrateBtn.addEventListener("click", () => {
   link.send({ type: "calibrate" });

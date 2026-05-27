@@ -1,22 +1,22 @@
 // iDrone simulator front-end: three.js scene + 60 Hz physics + HUD wiring.
 
 import * as THREE from "/static/lib/three.module.min.js";
-import { connect } from "/static/js/ws.js";
-import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js";
-import { buildArena } from "/static/js/arena.js";
-import { buildDrone } from "/static/js/drone.js";
-import { buildTrail } from "/static/js/trail.js";
+import { connect } from "/static/js/ws.js?v=12";
+import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=12";
+import { buildArena } from "/static/js/arena.js?v=12";
+import { buildDrone } from "/static/js/drone.js?v=12";
+import { buildTrail } from "/static/js/trail.js?v=12";
 import {
   buildPedestal,
   buildOrbitCamera,
   STATIONARY_POS,
-} from "/static/js/stationary.js";
+} from "/static/js/stationary.js?v=12";
 import {
   updateAttitude,
   updateCompass,
   updateTelemetry,
   setLinkStatus,
-} from "/static/js/hud.js";
+} from "/static/js/hud.js?v=12";
 
 const canvas = document.getElementById("canvas");
 const hintEl = document.getElementById("hud-hint");
@@ -44,6 +44,11 @@ scene.add(arena.group);
 const drone = buildDrone();
 scene.add(drone.root);
 scene.add(drone.shadow);
+// Drone stays hidden on the desktop until the user arms it (first Space press).
+const droneTargetScale = drone.root.scale.x;
+drone.root.visible = false;
+drone.shadow.visible = false;
+drone.root.scale.setScalar(0);
 
 const trail = buildTrail();
 scene.add(trail.line);
@@ -68,7 +73,44 @@ let peerState = "disconnected";
 // Smoothed orientation used in stationary mode (1:1 phone mirror).
 const statOri = { roll: 0, pitch: 0, yaw: 0 };
 
-let mode = "free"; // 'free' | 'stationary'
+// Starts as null so the initial setMode("free") runs through the body and
+// sizes the segmented-thumb (its CSS vars default to 0 width).
+let mode = null; // null | 'free' | 'stationary'
+let landed = false;  // true once the user signals that the drone is on the pad
+let armed = false;   // first Space press — drone materializes + phone intro plays
+let droneArmT = -1;  // 0..1 progression of the materialize animation; -1 = idle
+let armFlashLight = null;
+let armRing = null;
+
+function armDrone() {
+  if (armed) return;
+  armed = true;
+  drone.root.visible = true;
+  drone.shadow.visible = true;
+  drone.root.scale.setScalar(0.0001);
+  droneArmT = 0;
+  hintEl?.classList.add("hidden");
+
+  // Brief bright flash co-located with the drone — illuminates the new arrival.
+  armFlashLight = new THREE.PointLight(0x9affd6, 0, 14);
+  armFlashLight.position.copy(STATIONARY_POS);
+  scene.add(armFlashLight);
+
+  // Expanding ring at pedestal level — sci-fi "lock engaged" feel.
+  const ringGeo = new THREE.RingGeometry(0.42, 0.58, 64);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0x9affd6,
+    transparent: true,
+    opacity: 0,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  armRing = new THREE.Mesh(ringGeo, ringMat);
+  armRing.rotation.x = -Math.PI / 2;
+  armRing.position.set(STATIONARY_POS.x, 0.05, STATIONARY_POS.z);
+  scene.add(armRing);
+}
 
 let trailAccumulator = 0;
 const TRAIL_PUSH_INTERVAL = 1 / 30;
@@ -77,6 +119,7 @@ window.addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  syncModeThumb();
 });
 
 // ---------- WebSocket ----------
@@ -107,6 +150,7 @@ function handlePhoneMessage(msg) {
         hintEl.classList.add("hidden");
         setLinkStatus({ peer: "connected" });
         sendModeToPhone();
+        sendLandedToPhone();
       } else {
         hintEl.classList.remove("hidden");
         setLinkStatus({ peer: "waiting" });
@@ -162,13 +206,7 @@ function setMode(next, opts = {}) {
     btn.classList.toggle("active", on);
     btn.setAttribute("aria-selected", on ? "true" : "false");
   }
-  // Move the segmented thumb under the active button.
-  const active = modeToggle.querySelector(".mode-opt.active");
-  const thumb = modeToggle.querySelector(".mode-thumb");
-  if (active && thumb) {
-    thumb.style.setProperty("--thumb-w", `${active.offsetWidth}px`);
-    thumb.style.setProperty("--thumb-x", `${active.offsetLeft}px`);
-  }
+  syncModeThumb();
   document.body.classList.toggle("mode-stationary", mode === "stationary");
   pedestal.setActive(mode === "stationary");
   orbitCam.setActive(mode === "stationary");
@@ -190,6 +228,10 @@ function setMode(next, opts = {}) {
     state.vx = state.vy = state.vz = 0;
     ctrl.reset();
   }
+  if (mode !== "stationary" && landed) {
+    landed = false;
+    link.send({ type: "landed", value: false });
+  }
   if (!opts.silent) sendModeToPhone();
 }
 
@@ -197,12 +239,52 @@ function sendModeToPhone() {
   link.send({ type: "mode", value: mode });
 }
 
-for (const btn of modeToggle.querySelectorAll(".mode-opt")) {
-  btn.addEventListener("click", () => setMode(btn.dataset.mode));
+function syncModeThumb() {
+  const active = modeToggle.querySelector(".mode-opt.active");
+  const thumb = modeToggle.querySelector(".mode-thumb");
+  if (active && thumb) {
+    thumb.style.setProperty("--thumb-w", `${active.offsetWidth}px`);
+    thumb.style.setProperty("--thumb-x", `${active.offsetLeft}px`);
+  }
 }
 
-// Initial thumb position once layout has settled.
-requestAnimationFrame(() => setMode("free", { silent: true }));
+for (const btn of modeToggle.querySelectorAll(".mode-opt")) {
+  btn.addEventListener("click", () => {
+    // Clicking FLIGHT before Space still arms so the user can fly immediately.
+    if (btn.dataset.mode === "free" && !armed) {
+      armDrone();
+      landed = true;
+      link.send({ type: "landed", value: true });
+    }
+    setMode(btn.dataset.mode);
+  });
+}
+
+// First Space press: drone materializes on the desktop with the back-out
+// scale, light flash, and expanding ring AND the phone fires its intro and
+// transitions to live. Subsequent presses toggle the in-flight landed state.
+window.addEventListener("keydown", (e) => {
+  if (e.code !== "Space") return;
+  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+  if (mode !== "stationary") return;
+  e.preventDefault();
+
+  if (!armed) {
+    armDrone();
+    landed = true;
+    link.send({ type: "landed", value: true });
+    return;
+  }
+  landed = !landed;
+  link.send({ type: "landed", value: landed });
+});
+
+function sendLandedToPhone() {
+  link.send({ type: "landed", value: landed });
+}
+
+// Default to stationary so the drone "lives on the pad" until armed.
+requestAnimationFrame(() => setMode("stationary", { silent: true }));
 
 // ---------- loop ----------
 const PHYS_DT = 1 / 60;
@@ -216,6 +298,36 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
+
+  // Drone materialize-in animation (runs once on arming).
+  if (droneArmT >= 0 && droneArmT < 1) {
+    droneArmT = Math.min(1, droneArmT + dt / 0.95);
+    const t = droneArmT;
+    // Back-out ease: subtle overshoot then settle — feels deliberate.
+    const c1 = 1.70158;
+    const c3 = c1 + 1;
+    const eased = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    drone.root.scale.setScalar(Math.max(0, eased) * droneTargetScale);
+
+    if (armFlashLight) {
+      // Bell-curve intensity peaking around t=0.5.
+      armFlashLight.intensity = Math.sin(t * Math.PI) * 22;
+    }
+    if (armRing) {
+      const ringT = Math.min(1, t * 1.25);
+      armRing.scale.setScalar(0.6 + ringT * 6);
+      armRing.material.opacity = Math.sin(ringT * Math.PI) * 0.85;
+    }
+    if (t >= 1) {
+      if (armFlashLight) { scene.remove(armFlashLight); armFlashLight = null; }
+      if (armRing) {
+        scene.remove(armRing);
+        armRing.geometry.dispose();
+        armRing.material.dispose();
+        armRing = null;
+      }
+    }
+  }
 
   physAcc += dt;
   while (physAcc >= PHYS_DT) {

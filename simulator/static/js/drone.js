@@ -1,29 +1,38 @@
-// Stylized quadcopter, three.js primitives. Mavic-inspired silhouette.
+// Stylized Holystone-style mini whoop quadcopter — ducted prop guards in
+// light gray with subtle teal accent rings (read against the dark arena),
+// white pod body with bold green nose-to-tail stripe and side accents,
+// green 2-blade front props, black 3-blade rear props, soft under-glow.
 
 import * as THREE from "/static/lib/three.module.min.js";
 
-const SCALE = 2.2; // overall multiplier — bake the new size into the model
+const SCALE = 2.2;
 
 export function buildDrone() {
   const root = new THREE.Group();
 
   // ---------- materials ----------
-  // Pearl-white shell. Reads bright against the #0a0d12 sim background and
-  // catches the directional light dramatically.
-  const shell = new THREE.MeshStandardMaterial({
-    color: 0xe9ecf2,
-    roughness: 0.38,
+  // Prop guards: medium-light gray so they pop against the dark arena.
+  const guard = new THREE.MeshStandardMaterial({
+    color: 0xb2b9c2,
+    roughness: 0.55,
+    metalness: 0.25,
+  });
+  const guardDark = new THREE.MeshStandardMaterial({
+    color: 0x4a5057,
+    roughness: 0.6,
+    metalness: 0.25,
+  });
+  const shellWhite = new THREE.MeshStandardMaterial({
+    color: 0xf6f7f9,
+    roughness: 0.4,
+    metalness: 0.12,
+  });
+  const stripeGreen = new THREE.MeshStandardMaterial({
+    color: 0x2ee07a,
+    emissive: 0x1a8f4a,
+    emissiveIntensity: 0.65,
+    roughness: 0.4,
     metalness: 0.15,
-  });
-  const shellAccent = new THREE.MeshStandardMaterial({
-    color: 0xb8c0cc,
-    roughness: 0.45,
-    metalness: 0.2,
-  });
-  const glossBlack = new THREE.MeshStandardMaterial({
-    color: 0x0a0c10,
-    roughness: 0.08,
-    metalness: 0.2,
   });
   const accentTeal = new THREE.MeshStandardMaterial({
     color: 0x00c2ff,
@@ -32,195 +41,223 @@ export function buildDrone() {
     roughness: 0.35,
     metalness: 0.4,
   });
-  const metalRing = new THREE.MeshStandardMaterial({
-    color: 0x6a6e76,
-    roughness: 0.32,
-    metalness: 0.85,
-  });
-  const motorTop = new THREE.MeshStandardMaterial({
-    color: 0xff4b3a,
-    emissive: 0x7a1a0c,
+  const propGreen = new THREE.MeshStandardMaterial({
+    color: 0x2ee07a,
+    emissive: 0x0e6634,
     emissiveIntensity: 0.55,
-    roughness: 0.4,
-    metalness: 0.5,
-  });
-  const propMat = new THREE.MeshStandardMaterial({
-    color: 0xd4dae3,
-    roughness: 0.5,
+    roughness: 0.45,
     metalness: 0.1,
     side: THREE.DoubleSide,
   });
+  const propDark = new THREE.MeshStandardMaterial({
+    color: 0x2a2d32,
+    roughness: 0.55,
+    metalness: 0.2,
+    side: THREE.DoubleSide,
+  });
+  const motorCap = new THREE.MeshStandardMaterial({
+    color: 0x3a3e44,
+    roughness: 0.35,
+    metalness: 0.75,
+  });
+  const battery = new THREE.MeshStandardMaterial({
+    color: 0x22262c,
+    roughness: 0.5,
+    metalness: 0.3,
+  });
 
-  // ---------- core body (sleek lozenge) ----------
-  const bodyGroup = new THREE.Group();
-  root.add(bodyGroup);
-
-  // Bottom shell — capsule scaled into a flat oval.
-  const bellyGeo = new THREE.CapsuleGeometry(0.18, 0.34, 6, 18);
-  const belly = new THREE.Mesh(bellyGeo, shell);
-  belly.rotation.z = Math.PI / 2;
-  belly.scale.set(0.65, 1.0, 1.0); // squish vertically into a flat oval
-  belly.position.y = -0.02;
-  bodyGroup.add(belly);
-
-  // Top dome (sensor pod).
-  const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(0.16, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2),
-    glossBlack
-  );
-  dome.scale.set(1.0, 0.55, 1.6);
-  dome.position.set(0, 0.03, -0.02);
-  bodyGroup.add(dome);
-
-  // Cyan accent strip running along the top of the dome.
-  const strip = new THREE.Mesh(
-    new THREE.BoxGeometry(0.04, 0.005, 0.42),
-    accentTeal
-  );
-  strip.position.set(0, 0.116, -0.02);
-  bodyGroup.add(strip);
-
-  // Subtle ridge running across the nose for texture.
-  const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.012, 0.05), shellAccent);
-  ridge.position.set(0, 0.04, 0.21);
-  bodyGroup.add(ridge);
-
-  // ---------- camera gimbal under the nose ----------
-  const gimbalArm = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.022, 0.022, 0.09, 12),
-    glossBlack
-  );
-  gimbalArm.position.set(0, -0.04, 0.22);
-  gimbalArm.rotation.x = Math.PI / 12;
-  bodyGroup.add(gimbalArm);
-
-  const gimbalHousing = new THREE.Mesh(
-    new THREE.BoxGeometry(0.1, 0.08, 0.1),
-    glossBlack
-  );
-  gimbalHousing.position.set(0, -0.1, 0.27);
-  bodyGroup.add(gimbalHousing);
-
-  const lens = new THREE.Mesh(
-    new THREE.SphereGeometry(0.034, 18, 14),
-    new THREE.MeshStandardMaterial({
-      color: 0x0a0c10,
-      roughness: 0.05,
-      metalness: 0.1,
-      emissive: 0x003040,
-      emissiveIntensity: 0.5,
-    })
-  );
-  lens.position.set(0, -0.1, 0.33);
-  bodyGroup.add(lens);
-
-  const lensRing = new THREE.Mesh(
-    new THREE.TorusGeometry(0.04, 0.006, 10, 22),
-    metalRing
-  );
-  lensRing.position.copy(lens.position);
-  lensRing.rotation.y = Math.PI / 2;
-  lensRing.rotation.x = Math.PI / 2;
-  bodyGroup.add(lensRing);
-
-  // ---------- antenna ----------
-  const antenna = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.008, 0.008, 0.16, 8),
-    glossBlack
-  );
-  antenna.position.set(0, 0.15, -0.18);
-  bodyGroup.add(antenna);
-  const antennaTip = new THREE.Mesh(
-    new THREE.SphereGeometry(0.018, 10, 8),
-    accentTeal
-  );
-  antennaTip.position.set(0, 0.24, -0.18);
-  bodyGroup.add(antennaTip);
-
-  // ---------- arms + motors + props ----------
-  const armOffsets = [
-    [+1, +1, "front-right"],
-    [+1, -1, "back-right"],
-    [-1, +1, "front-left"],
-    [-1, -1, "back-left"],
-  ];
-  const armReach = 0.55;
-  const armThickness = 0.045;
+  // ---------- ducted prop guards (the defining feature) ----------
+  const ductRadius = 0.34;
+  const ductTube = 0.04;
+  const ductHalfHeight = 0.07;
+  const ductOffset = 0.42;
 
   const propMeshes = [];
+  const corners = [
+    { sx: +1, sz: +1, front: true },
+    { sx: -1, sz: +1, front: true },
+    { sx: +1, sz: -1, front: false },
+    { sx: -1, sz: -1, front: false },
+  ];
 
-  for (const [sx, sz] of armOffsets) {
-    // Arm — tapered using two boxes (root + tip) to fake taper without lathe.
-    const armRoot = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, armThickness, armThickness * 1.6),
-      shell
+  for (const { sx, sz, front } of corners) {
+    const cx = sx * ductOffset;
+    const cz = sz * ductOffset;
+
+    // Outer wall of the duct.
+    const wall = new THREE.Mesh(
+      new THREE.CylinderGeometry(ductRadius, ductRadius, ductHalfHeight * 2, 36, 1, true),
+      guard
     );
-    armRoot.position.set((sx * armReach) / 2, -0.02, (sz * armReach) / 2);
-    armRoot.rotation.y = -Math.atan2(sz, sx);
-    bodyGroup.add(armRoot);
+    wall.position.set(cx, 0.0, cz);
+    root.add(wall);
 
-    const armX = sx * armReach;
-    const armZ = sz * armReach;
+    // Top + bottom torus rims.
+    for (const ry of [ductHalfHeight, -ductHalfHeight]) {
+      const rim = new THREE.Mesh(
+        new THREE.TorusGeometry(ductRadius, ductTube * 0.6, 12, 32),
+        guardDark
+      );
+      rim.rotation.x = Math.PI / 2;
+      rim.position.set(cx, ry, cz);
+      root.add(rim);
+    }
 
-    // Motor stack — base cylinder + heat-sink ring + top cap (red/blue per side)
-    const motorBase = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.062, 0.07, 0.05, 18),
-      glossBlack
+    // Inner teal accent ring at the top — subtle tech glow.
+    const accent = new THREE.Mesh(
+      new THREE.TorusGeometry(ductRadius * 0.92, 0.006, 8, 32),
+      accentTeal
     );
-    motorBase.position.set(armX, 0.0, armZ);
-    bodyGroup.add(motorBase);
+    accent.rotation.x = Math.PI / 2;
+    accent.position.set(cx, ductHalfHeight + 0.002, cz);
+    root.add(accent);
 
-    const motorCore = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.055, 0.055, 0.06, 18),
-      metalRing
+    // Motor stack centered inside the duct.
+    const motorBody = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.05, 0.07, 14),
+      guardDark
     );
-    motorCore.position.set(armX, 0.045, armZ);
-    bodyGroup.add(motorCore);
+    motorBody.position.set(cx, -0.005, cz);
+    root.add(motorBody);
 
-    const motorCap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.052, 0.018, 18),
-      motorTop
+    const motorTop = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.04, 0.02, 14),
+      motorCap
     );
-    motorCap.position.set(armX, 0.085, armZ);
-    bodyGroup.add(motorCap);
+    motorTop.position.set(cx, 0.04, cz);
+    root.add(motorTop);
 
-    // Propeller — two long blades crossed, plus a translucent disc to fake
-    // motion-blurred sweep when spinning. Blades are big enough to read at a
-    // glance and bright enough to pop against the dark background.
+    // Propellers: green 2-blade for front, dark 3-blade for rear.
     const propGroup = new THREE.Group();
-    propGroup.position.set(armX, 0.108, armZ);
-    bodyGroup.add(propGroup);
+    propGroup.position.set(cx, 0.06, cz);
+    root.add(propGroup);
 
-    const blade1 = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.008, 0.028), propMat);
-    const blade2 = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.008, 0.028), propMat);
-    blade2.rotation.y = Math.PI / 2;
-    propGroup.add(blade1, blade2);
+    const bladeMat = front ? propGreen : propDark;
+    const bladeCount = front ? 2 : 3;
+    const bladeLength = ductRadius * 1.7;
+    const bladeWidth = 0.06;
+    for (let i = 0; i < bladeCount; i++) {
+      const blade = new THREE.Mesh(
+        new THREE.BoxGeometry(bladeLength, 0.008, bladeWidth),
+        bladeMat
+      );
+      blade.rotation.y = (i / bladeCount) * Math.PI * 2;
+      blade.rotation.x = 0.18;
+      propGroup.add(blade);
+    }
 
-    // A faint hub cap to seat the props.
-    const hubCap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.024, 0.024, 0.012, 14),
-      shellAccent
+    const hub = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.028, 0.028, 0.018, 12),
+      front ? propGreen : motorCap
     );
-    hubCap.position.y = 0.008;
-    propGroup.add(hubCap);
+    hub.position.y = 0.006;
+    propGroup.add(hub);
 
     const sweep = new THREE.Mesh(
-      new THREE.CircleGeometry(0.22, 32),
+      new THREE.CircleGeometry(ductRadius * 0.92, 32),
       new THREE.MeshBasicMaterial({
-        color: 0xb0d6ff,
+        color: front ? 0x7af0a8 : 0xc8d0db,
         transparent: true,
-        opacity: 0.09,
+        opacity: 0.07,
         side: THREE.DoubleSide,
         depthWrite: false,
       })
     );
     sweep.rotation.x = -Math.PI / 2;
-    sweep.position.y = 0.002;
+    sweep.position.y = 0.005;
     propGroup.add(sweep);
+
     propMeshes.push(propGroup);
   }
 
-  // ---------- nav LEDs (proper aviation: red right, green left, white front, red rear) ----------
+  // ---------- center pod body ----------
+  const podGroup = new THREE.Group();
+  root.add(podGroup);
+
+  // Main pod (capsule along Z).
+  const pod = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.13, 0.42, 8, 18),
+    shellWhite
+  );
+  pod.rotation.x = Math.PI / 2;
+  pod.position.y = 0.02;
+  podGroup.add(pod);
+
+  // Underside battery housing.
+  const batt = new THREE.Mesh(
+    new THREE.BoxGeometry(0.17, 0.06, 0.38),
+    battery
+  );
+  batt.position.set(0, -0.06, 0);
+  podGroup.add(batt);
+
+  // Bold green stripe along the top spine.
+  const stripeTop = new THREE.Mesh(
+    new THREE.BoxGeometry(0.08, 0.014, 0.66),
+    stripeGreen
+  );
+  stripeTop.position.set(0, 0.14, 0);
+  podGroup.add(stripeTop);
+
+  // Two flanking green stripes that taper toward the nose and tail.
+  for (const sx of [-1, 1]) {
+    const flank = new THREE.Mesh(
+      new THREE.BoxGeometry(0.022, 0.012, 0.58),
+      stripeGreen
+    );
+    flank.position.set(sx * 0.08, 0.105, 0);
+    flank.rotation.z = sx * 0.12;
+    podGroup.add(flank);
+  }
+
+  // Green nose chevron — pointed accent at the very front, makes forward
+  // direction unmistakable even at a glance.
+  const noseChev = new THREE.Mesh(
+    new THREE.ConeGeometry(0.07, 0.12, 4),
+    stripeGreen
+  );
+  noseChev.rotation.x = Math.PI / 2;
+  noseChev.rotation.y = Math.PI / 4;
+  noseChev.position.set(0, 0.06, 0.3);
+  podGroup.add(noseChev);
+
+  // Nose canopy bump.
+  const nose = new THREE.Mesh(
+    new THREE.SphereGeometry(0.1, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+    shellWhite
+  );
+  nose.scale.set(1.0, 0.5, 1.1);
+  nose.position.set(0, 0.04, 0.18);
+  podGroup.add(nose);
+
+  // Cyan canopy detail line across the top of the nose.
+  const noseLine = new THREE.Mesh(
+    new THREE.BoxGeometry(0.16, 0.006, 0.018),
+    accentTeal
+  );
+  noseLine.position.set(0, 0.085, 0.21);
+  podGroup.add(noseLine);
+
+  // ---------- arm connectors (thin struts from pod to each duct) ----------
+  for (const { sx, sz } of corners) {
+    const strut = new THREE.Mesh(
+      new THREE.BoxGeometry(0.46, 0.024, 0.055),
+      guard
+    );
+    strut.position.set((sx * ductOffset) / 2, 0.0, (sz * ductOffset) / 2);
+    strut.rotation.y = -Math.atan2(sz * ductOffset, sx * ductOffset);
+    root.add(strut);
+
+    // Small green accent block where the strut meets the duct.
+    const tip = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.018, 0.05),
+      stripeGreen
+    );
+    tip.position.set(sx * (ductOffset * 0.78), 0.01, sz * (ductOffset * 0.78));
+    root.add(tip);
+  }
+
+  // ---------- nav LEDs ----------
   const ledMat = (hex, em) =>
     new THREE.MeshStandardMaterial({
       color: hex,
@@ -233,39 +270,41 @@ export function buildDrone() {
     m.position.set(x, y, z);
     return m;
   };
-  bodyGroup.add(led(0xffffff, 0.0, 0.0, 0.32, 1.4)); // front white
-  bodyGroup.add(led(0xff3b30, 0.0, 0.0, -0.32, 1.4)); // rear red
-  bodyGroup.add(led(0xff3b30, 0.28, -0.02, 0.02, 1.0, 0.018)); // starboard red
-  bodyGroup.add(led(0x33d17a, -0.28, -0.02, 0.02, 1.0, 0.018)); // port green
+  root.add(led(0xffffff, 0.0, 0.08, 0.36, 1.6));
+  root.add(led(0xff3b30, 0.0, 0.08, -0.36, 1.4));
 
-  // ---------- landing skids ----------
-  const skidMat = glossBlack;
-  for (const sx of [-1, 1]) {
-    const skid = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.012, 0.012, 0.5, 10),
-      skidMat
+  // ---------- under-glow (subtle teal disc on the belly) ----------
+  const underGlow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.32, 36),
+    new THREE.MeshBasicMaterial({
+      color: 0x00c2ff,
+      transparent: true,
+      opacity: 0.18,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    })
+  );
+  underGlow.rotation.x = Math.PI / 2;
+  underGlow.position.y = -0.105;
+  root.add(underGlow);
+
+  // ---------- landing feet ----------
+  for (const { sx, sz } of corners) {
+    const foot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.022, 0.05, 8),
+      guardDark
     );
-    skid.rotation.x = Math.PI / 2;
-    skid.position.set(sx * 0.18, -0.16, 0);
-    bodyGroup.add(skid);
-
-    for (const sz of [-0.18, 0.18]) {
-      const strut = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.01, 0.01, 0.16, 8),
-        skidMat
-      );
-      strut.position.set(sx * 0.18, -0.08, sz);
-      bodyGroup.add(strut);
-    }
+    foot.position.set(sx * ductOffset, -ductHalfHeight - 0.025, sz * ductOffset);
+    root.add(foot);
   }
 
   // ---------- scale ----------
-  bodyGroup.scale.setScalar(SCALE);
+  root.scale.setScalar(SCALE);
 
-  // ---------- shadow (lives on scene root, not parented to drone) ----------
+  // ---------- shadow ----------
   const shadowTex = makeShadowTexture();
   const shadow = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.2 * SCALE, 2.2 * SCALE),
+    new THREE.PlaneGeometry(2.4 * SCALE, 2.4 * SCALE),
     new THREE.MeshBasicMaterial({
       map: shadowTex,
       transparent: true,
@@ -276,7 +315,7 @@ export function buildDrone() {
   shadow.rotation.x = -Math.PI / 2;
 
   function updatePropSpin(dt) {
-    for (const p of propMeshes) p.rotation.y += 60 * dt; // 60 rad/s
+    for (const p of propMeshes) p.rotation.y += 60 * dt;
   }
 
   function updateShadow(state) {
