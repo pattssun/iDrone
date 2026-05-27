@@ -68,7 +68,9 @@ let peerState = "disconnected";
 // Smoothed orientation used in stationary mode (1:1 phone mirror).
 const statOri = { roll: 0, pitch: 0, yaw: 0 };
 
-let mode = "free"; // 'free' | 'stationary'
+// Starts as null so the initial setMode("free") runs through the body and
+// sizes the segmented-thumb (its CSS vars default to 0 width).
+let mode = null; // null | 'free' | 'stationary'
 
 let trailAccumulator = 0;
 const TRAIL_PUSH_INTERVAL = 1 / 30;
@@ -77,6 +79,7 @@ window.addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  syncModeThumb();
 });
 
 // ---------- WebSocket ----------
@@ -162,13 +165,7 @@ function setMode(next, opts = {}) {
     btn.classList.toggle("active", on);
     btn.setAttribute("aria-selected", on ? "true" : "false");
   }
-  // Move the segmented thumb under the active button.
-  const active = modeToggle.querySelector(".mode-opt.active");
-  const thumb = modeToggle.querySelector(".mode-thumb");
-  if (active && thumb) {
-    thumb.style.setProperty("--thumb-w", `${active.offsetWidth}px`);
-    thumb.style.setProperty("--thumb-x", `${active.offsetLeft}px`);
-  }
+  syncModeThumb();
   document.body.classList.toggle("mode-stationary", mode === "stationary");
   pedestal.setActive(mode === "stationary");
   orbitCam.setActive(mode === "stationary");
@@ -195,6 +192,15 @@ function setMode(next, opts = {}) {
 
 function sendModeToPhone() {
   link.send({ type: "mode", value: mode });
+}
+
+function syncModeThumb() {
+  const active = modeToggle.querySelector(".mode-opt.active");
+  const thumb = modeToggle.querySelector(".mode-thumb");
+  if (active && thumb) {
+    thumb.style.setProperty("--thumb-w", `${active.offsetWidth}px`);
+    thumb.style.setProperty("--thumb-x", `${active.offsetLeft}px`);
+  }
 }
 
 for (const btn of modeToggle.querySelectorAll(".mode-opt")) {

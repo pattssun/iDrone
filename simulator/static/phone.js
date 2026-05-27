@@ -11,6 +11,7 @@ const calibHorizon = document.getElementById("calib-horizon");
 const calibrateBtn = document.getElementById("calibrate-btn");
 const resetBtn = document.getElementById("reset-btn");
 const connDot = document.getElementById("conn-dot");
+const statConnDot = document.getElementById("stat-conn-dot");
 const connLabel = document.getElementById("conn-label");
 const rateEl = document.getElementById("send-rate");
 const rPitch = document.getElementById("r-pitch");
@@ -50,16 +51,15 @@ function setStateClass(s) {
   app.classList.add(`state-${s}`);
 }
 function setConn(s) {
-  connDot.classList.remove("linking", "live");
-  if (s === "live") {
-    connDot.classList.add("live");
-    connLabel.textContent = "Live";
-  } else if (s === "linking") {
-    connDot.classList.add("linking");
-    connLabel.textContent = "Linking";
-  } else {
-    connLabel.textContent = "Dropped";
+  for (const d of [connDot, statConnDot]) {
+    if (!d) continue;
+    d.classList.remove("linking", "live");
+    if (s === "live") d.classList.add("live");
+    else if (s === "linking") d.classList.add("linking");
   }
+  if (s === "live") connLabel.textContent = "Live";
+  else if (s === "linking") connLabel.textContent = "Linking";
+  else connLabel.textContent = "Dropped";
 }
 function wrapDelta(d) {
   return ((d + 540) % 360) - 180;
