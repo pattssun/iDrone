@@ -1,22 +1,22 @@
 // iDrone simulator front-end: three.js scene + 60 Hz physics + HUD wiring.
 
 import * as THREE from "/static/lib/three.module.min.js";
-import { connect } from "/static/js/ws.js?v=9";
-import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=9";
-import { buildArena } from "/static/js/arena.js?v=9";
-import { buildDrone } from "/static/js/drone.js?v=9";
-import { buildTrail } from "/static/js/trail.js?v=9";
+import { connect } from "/static/js/ws.js?v=10";
+import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=10";
+import { buildArena } from "/static/js/arena.js?v=10";
+import { buildDrone } from "/static/js/drone.js?v=10";
+import { buildTrail } from "/static/js/trail.js?v=10";
 import {
   buildPedestal,
   buildOrbitCamera,
   STATIONARY_POS,
-} from "/static/js/stationary.js?v=9";
+} from "/static/js/stationary.js?v=10";
 import {
   updateAttitude,
   updateCompass,
   updateTelemetry,
   setLinkStatus,
-} from "/static/js/hud.js?v=9";
+} from "/static/js/hud.js?v=10";
 
 const canvas = document.getElementById("canvas");
 const hintEl = document.getElementById("hud-hint");
@@ -76,9 +76,12 @@ const statOri = { roll: 0, pitch: 0, yaw: 0 };
 // Starts as null so the initial setMode("free") runs through the body and
 // sizes the segmented-thumb (its CSS vars default to 0 width).
 let mode = null; // null | 'free' | 'stationary'
-let landed = false; // true once the user signals (Space) that the drone is on the pad
-let armed = false;  // true once the drone has been materialized (first deliberate action)
-let droneArmT = -1; // 0..1 progression of the scale-in animation; -1 = idle
+let landed = false;  // true once the user signals that the drone is on the pad
+let started = false; // first Space press — phone has been told to play the intro
+let armed = false;   // second Space press — drone is materialized on the desktop
+let droneArmT = -1;  // 0..1 progression of the materialize animation; -1 = idle
+let armFlashLight = null;
+let armRing = null;
 
 function armDrone() {
   if (armed) return;
@@ -88,6 +91,26 @@ function armDrone() {
   drone.root.scale.setScalar(0.0001);
   droneArmT = 0;
   hintEl?.classList.add("hidden");
+
+  // Brief bright flash co-located with the drone — illuminates the new arrival.
+  armFlashLight = new THREE.PointLight(0x9affd6, 0, 14);
+  armFlashLight.position.copy(STATIONARY_POS);
+  scene.add(armFlashLight);
+
+  // Expanding ring at pedestal level — sci-fi "lock engaged" feel.
+  const ringGeo = new THREE.RingGeometry(0.42, 0.58, 64);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0x9affd6,
+    transparent: true,
+    opacity: 0,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  armRing = new THREE.Mesh(ringGeo, ringMat);
+  armRing.rotation.x = -Math.PI / 2;
+  armRing.position.set(STATIONARY_POS.x, 0.05, STATIONARY_POS.z);
+  scene.add(armRing);
 }
 
 let trailAccumulator = 0;
@@ -228,20 +251,42 @@ function syncModeThumb() {
 
 for (const btn of modeToggle.querySelectorAll(".mode-opt")) {
   btn.addEventListener("click", () => {
-    // Clicking FLIGHT before pressing Space still counts as arming.
-    if (btn.dataset.mode === "free" && !armed) armDrone();
+    // Clicking FLIGHT short-circuits any uncompleted boot steps so the user
+    // can fly immediately even if they never pressed Space.
+    if (btn.dataset.mode === "free") {
+      if (!started) {
+        started = true;
+        landed = true;
+        link.send({ type: "landed", value: true });
+      }
+      if (!armed) armDrone();
+    }
     setMode(btn.dataset.mode);
   });
 }
 
-// Space toggles "drone is on the pad". Only meaningful in stationary mode.
-// The first Space press also materializes the drone onto the pedestal.
+// Two-step boot via Space, then normal toggle:
+//   Press 1 — tells the phone to play the intro and transition to live.
+//             The desktop drone stays hidden.
+//   Press 2 — materializes the drone onto the pedestal with a brief flash
+//             and an expanding ring (the "engaging" moment).
+//   Press 3+ — toggles the in-flight landed state on the phone.
 window.addEventListener("keydown", (e) => {
   if (e.code !== "Space") return;
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
   if (mode !== "stationary") return;
   e.preventDefault();
-  if (!armed) armDrone();
+
+  if (!started) {
+    started = true;
+    landed = true;
+    link.send({ type: "landed", value: true });
+    return;
+  }
+  if (!armed) {
+    armDrone();
+    return;
+  }
   landed = !landed;
   link.send({ type: "landed", value: landed });
 });
@@ -266,12 +311,34 @@ function frame(now) {
   const dt = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
 
-  // Drone materialize-in animation (only runs immediately after arming).
+  // Drone materialize-in animation (runs once on arming).
   if (droneArmT >= 0 && droneArmT < 1) {
-    droneArmT = Math.min(1, droneArmT + dt / 0.75);
-    // Cubic-ease-out feels organic — slow stop at full size.
-    const eased = 1 - Math.pow(1 - droneArmT, 3);
-    drone.root.scale.setScalar(eased * droneTargetScale);
+    droneArmT = Math.min(1, droneArmT + dt / 0.95);
+    const t = droneArmT;
+    // Back-out ease: subtle overshoot then settle — feels deliberate.
+    const c1 = 1.70158;
+    const c3 = c1 + 1;
+    const eased = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    drone.root.scale.setScalar(Math.max(0, eased) * droneTargetScale);
+
+    if (armFlashLight) {
+      // Bell-curve intensity peaking around t=0.5.
+      armFlashLight.intensity = Math.sin(t * Math.PI) * 22;
+    }
+    if (armRing) {
+      const ringT = Math.min(1, t * 1.25);
+      armRing.scale.setScalar(0.6 + ringT * 6);
+      armRing.material.opacity = Math.sin(ringT * Math.PI) * 0.85;
+    }
+    if (t >= 1) {
+      if (armFlashLight) { scene.remove(armFlashLight); armFlashLight = null; }
+      if (armRing) {
+        scene.remove(armRing);
+        armRing.geometry.dispose();
+        armRing.material.dispose();
+        armRing = null;
+      }
+    }
   }
 
   physAcc += dt;
