@@ -1,6 +1,6 @@
 // Phone controller — orientation + throttle slider, relayed to the sim.
 
-import { connect } from "/static/js/ws.js?v=4";
+import { connect } from "/static/js/ws.js?v=5";
 
 // --- DOM ---
 const app = document.getElementById("app");
@@ -13,6 +13,21 @@ const resetBtn = document.getElementById("reset-btn");
 const connDot = document.getElementById("conn-dot");
 const statConnDot = document.getElementById("stat-conn-dot");
 const modeBadge = document.getElementById("mode-badge");
+
+// CSS "1in" is always 96px regardless of device; on phones that's well under
+// a physical inch. Estimate true physical-inch-in-CSS-px from device pixel
+// ratio (iPhones: 460 device PPI at DPR 3, 326 at DPR 2) and expose as a
+// CSS variable so the landing pad can size to a real-world 2"x2".
+(function calibratePhysicalInch() {
+  const dpr = window.devicePixelRatio || 1;
+  const ua = navigator.userAgent;
+  const isiOS = /iPhone|iPad|iPod/.test(ua);
+  const isAndroid = /Android/.test(ua);
+  let pxPerInch = 96;
+  if (isiOS) pxPerInch = dpr >= 3 ? 153 : 163;
+  else if (isAndroid) pxPerInch = dpr >= 3 ? 150 : dpr >= 2 ? 160 : 96;
+  document.documentElement.style.setProperty("--phys-in", `${pxPerInch}px`);
+})();
 const connLabel = document.getElementById("conn-label");
 const rateEl = document.getElementById("send-rate");
 const rPitch = document.getElementById("r-pitch");

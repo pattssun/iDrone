@@ -701,20 +701,20 @@ body {
 }
 .pad-circle {
   position: absolute;
-  width: 0.55in;
-  height: 0.55in;
-  margin-left: -0.275in;
-  margin-top: -0.275in;
+  width: calc(var(--phys-in, 96px) * 0.75);
+  height: calc(var(--phys-in, 96px) * 0.75);
+  margin-left: calc(var(--phys-in, 96px) * -0.375);
+  margin-top: calc(var(--phys-in, 96px) * -0.375);
   border-radius: 50%;
   background: radial-gradient(circle, rgba(0, 194, 255, 0.55), rgba(0, 194, 255, 0.05) 72%);
   border: 2px solid rgba(0, 194, 255, 0.9);
   box-shadow: 0 0 24px rgba(0, 194, 255, 0.55);
   animation: pad-pulse 1.6s ease-in-out infinite;
 }
-.pad-circle:nth-child(1) { left: -1in; top: -1in; }
-.pad-circle:nth-child(2) { left:  1in; top: -1in; animation-delay: 0.2s; }
-.pad-circle:nth-child(3) { left: -1in; top:  1in; animation-delay: 0.4s; }
-.pad-circle:nth-child(4) { left:  1in; top:  1in; animation-delay: 0.6s; }
+.pad-circle:nth-child(1) { left: calc(var(--phys-in, 96px) * -1); top: calc(var(--phys-in, 96px) * -1); }
+.pad-circle:nth-child(2) { left: calc(var(--phys-in, 96px) *  1); top: calc(var(--phys-in, 96px) * -1); animation-delay: 0.2s; }
+.pad-circle:nth-child(3) { left: calc(var(--phys-in, 96px) * -1); top: calc(var(--phys-in, 96px) *  1); animation-delay: 0.4s; }
+.pad-circle:nth-child(4) { left: calc(var(--phys-in, 96px) *  1); top: calc(var(--phys-in, 96px) *  1); animation-delay: 0.6s; }
 @keyframes pad-pulse {
   0%, 100% { transform: scale(1);    opacity: 0.85; box-shadow: 0 0 18px rgba(0, 194, 255, 0.45); }
   50%      { transform: scale(1.12); opacity: 1.0;  box-shadow: 0 0 32px rgba(0, 194, 255, 0.85); }
