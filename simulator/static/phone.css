@@ -646,21 +646,41 @@ body {
   -webkit-backdrop-filter: blur(8px);
 }
 
-/* Landing pad: 4 pulsing circles, centers 2in apart in a square */
+/* Always-visible mode badge (small floating chip in the top-left corner) */
+.mode-badge {
+  position: fixed;
+  top: max(env(safe-area-inset-top), 8px);
+  left: 10px;
+  z-index: 20;
+  padding: 4px 9px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--text);
+  background: rgba(8, 14, 22, 0.85);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  pointer-events: none;
+}
+.mode-stationary .mode-badge {
+  color: #001722;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Landing pad — 4 pulsing circles centered, 2in apart center-to-center */
 .landing-pad {
   display: none;
   position: fixed;
   inset: 0;
-  align-items: center;
-  justify-content: center;
   pointer-events: none;
   z-index: 4;
   background: #070a0f;
 }
-.mode-stationary .landing-pad { display: flex; flex-direction: column; }
+.mode-stationary .landing-pad { display: block; }
 .landing-pad .pad-label {
   position: absolute;
-  top: max(env(safe-area-inset-top), 18px);
+  top: max(env(safe-area-inset-top), 40px);
   left: 0;
   right: 0;
   text-align: center;
@@ -670,26 +690,31 @@ body {
   color: var(--accent);
   text-shadow: 0 0 14px rgba(0, 194, 255, 0.6);
 }
+/* The pad-grid is a 0-size point at screen center; circles are absolutely
+   positioned relative to it. Guarantees symmetry regardless of viewport. */
 .landing-pad .pad-grid {
-  display: grid;
-  grid-template-columns: 2in 2in;
-  grid-template-rows: 2in 2in;
-  margin: auto;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
 }
 .pad-circle {
+  position: absolute;
   width: 0.55in;
   height: 0.55in;
+  margin-left: -0.275in;
+  margin-top: -0.275in;
   border-radius: 50%;
-  justify-self: center;
-  align-self: center;
   background: radial-gradient(circle, rgba(0, 194, 255, 0.55), rgba(0, 194, 255, 0.05) 72%);
   border: 2px solid rgba(0, 194, 255, 0.9);
   box-shadow: 0 0 24px rgba(0, 194, 255, 0.55);
   animation: pad-pulse 1.6s ease-in-out infinite;
 }
-.pad-circle:nth-child(2) { animation-delay: 0.2s; }
-.pad-circle:nth-child(3) { animation-delay: 0.4s; }
-.pad-circle:nth-child(4) { animation-delay: 0.6s; }
+.pad-circle:nth-child(1) { left: -1in; top: -1in; }
+.pad-circle:nth-child(2) { left:  1in; top: -1in; animation-delay: 0.2s; }
+.pad-circle:nth-child(3) { left: -1in; top:  1in; animation-delay: 0.4s; }
+.pad-circle:nth-child(4) { left:  1in; top:  1in; animation-delay: 0.6s; }
 @keyframes pad-pulse {
   0%, 100% { transform: scale(1);    opacity: 0.85; box-shadow: 0 0 18px rgba(0, 194, 255, 0.45); }
   50%      { transform: scale(1.12); opacity: 1.0;  box-shadow: 0 0 32px rgba(0, 194, 255, 0.85); }

@@ -12,6 +12,7 @@ const calibrateBtn = document.getElementById("calibrate-btn");
 const resetBtn = document.getElementById("reset-btn");
 const connDot = document.getElementById("conn-dot");
 const statConnDot = document.getElementById("stat-conn-dot");
+const modeBadge = document.getElementById("mode-badge");
 const connLabel = document.getElementById("conn-label");
 const rateEl = document.getElementById("send-rate");
 const rPitch = document.getElementById("r-pitch");
@@ -85,6 +86,7 @@ function applyMode(next) {
   if (simMode === next) return;
   simMode = next;
   app.classList.toggle("mode-stationary", simMode === "stationary");
+  if (modeBadge) modeBadge.textContent = simMode.toUpperCase();
   console.log("[phone] body classList:", app.className);
   if (simMode === "stationary") {
     // Throttle is irrelevant — show it locked, force value to neutral.
