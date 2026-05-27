@@ -1,22 +1,22 @@
 // iDrone simulator front-end: three.js scene + 60 Hz physics + HUD wiring.
 
 import * as THREE from "/static/lib/three.module.min.js";
-import { connect } from "/static/js/ws.js?v=11";
-import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=11";
-import { buildArena } from "/static/js/arena.js?v=11";
-import { buildDrone } from "/static/js/drone.js?v=11";
-import { buildTrail } from "/static/js/trail.js?v=11";
+import { connect } from "/static/js/ws.js?v=12";
+import { ControlPipeline, DroneState, ARENA } from "/static/js/physics.js?v=12";
+import { buildArena } from "/static/js/arena.js?v=12";
+import { buildDrone } from "/static/js/drone.js?v=12";
+import { buildTrail } from "/static/js/trail.js?v=12";
 import {
   buildPedestal,
   buildOrbitCamera,
   STATIONARY_POS,
-} from "/static/js/stationary.js?v=11";
+} from "/static/js/stationary.js?v=12";
 import {
   updateAttitude,
   updateCompass,
   updateTelemetry,
   setLinkStatus,
-} from "/static/js/hud.js?v=11";
+} from "/static/js/hud.js?v=12";
 
 const canvas = document.getElementById("canvas");
 const hintEl = document.getElementById("hud-hint");
