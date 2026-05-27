@@ -130,18 +130,6 @@
           </div>
         </div>
 
-        <!-- Stationary landing pad -->
-        <div class="landing-pad" aria-hidden="true">
-          <div class="pad-grid">
-            <div class="pad-circle"></div>
-            <div class="pad-circle"></div>
-            <div class="pad-circle"></div>
-            <div class="pad-circle"></div>
-          </div>
-        </div>
-
-        <span class="dot stat-conn-dot" id="stat-conn-dot" aria-hidden="true"></span>
-
         <!-- Action chips -->
         <div class="dock">
           <button class="chip" id="calibrate-btn">
@@ -167,6 +155,17 @@
 
       <!-- Tiny activity tick so packets-flowing feel alive -->
       <div class="pulse" id="pulse" aria-hidden="true"></div>
+
+      <!-- Stationary landing pad — overlays any phone state when sim mode is stationary -->
+      <div class="landing-pad" aria-hidden="true">
+        <div class="pad-grid">
+          <div class="pad-circle"></div>
+          <div class="pad-circle"></div>
+          <div class="pad-circle"></div>
+          <div class="pad-circle"></div>
+        </div>
+      </div>
+      <span class="dot stat-conn-dot" id="stat-conn-dot" aria-hidden="true"></span>
     </main>
 
     <script type="module" src="/static/phone.js"></script>

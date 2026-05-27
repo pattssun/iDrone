@@ -616,17 +616,19 @@ body {
   z-index: 2;
 }
 /* Stationary mode: phone becomes a landing pad. Hide flight UI, show pad. */
-.state-live.mode-stationary .topbar,
-.state-live.mode-stationary .horizon-wrap,
-.state-live.mode-stationary .throttle-col,
-.state-live.mode-stationary .pulse { display: none; }
+.mode-stationary .topbar,
+.mode-stationary .horizon-wrap,
+.mode-stationary .throttle-col,
+.mode-stationary .pulse,
+.mode-stationary .screen.awaiting,
+.mode-stationary .screen.calibrating { display: none; }
 
-.state-live.mode-stationary .screen.live {
+.mode-stationary .screen.live {
   padding: 0;
   gap: 0;
 }
 
-/* keep Calibrate / Reset chips reachable, but small and out of the way */
+/* keep Calibrate / Reset chips reachable, small and out of the way */
 .state-live.mode-stationary .dock {
   position: fixed;
   bottom: max(env(safe-area-inset-bottom), 14px);
@@ -634,6 +636,7 @@ body {
   right: 14px;
   gap: 10px;
   pointer-events: auto;
+  z-index: 6;
 }
 .state-live.mode-stationary .chip {
   padding: 8px 10px;
@@ -644,20 +647,21 @@ body {
 }
 
 /* Landing pad: 4 pulsing circles, centers 2in apart in a square */
-.landing-pad { display: none; }
-.state-live.mode-stationary .landing-pad {
-  display: flex;
+.landing-pad {
+  display: none;
   position: fixed;
   inset: 0;
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  z-index: 4;
+  background: #070a0f;
 }
+.mode-stationary .landing-pad { display: flex; }
 .landing-pad .pad-grid {
   display: grid;
   grid-template-columns: 2in 2in;
   grid-template-rows: 2in 2in;
-  /* shift so first/last cell centers sit symmetrically around screen center */
   transform: translate(-1in, -1in);
 }
 .pad-circle {
@@ -689,9 +693,9 @@ body {
   height: 8px;
   border-radius: 50%;
   pointer-events: none;
-  z-index: 5;
+  z-index: 6;
 }
-.state-live.mode-stationary .stat-conn-dot { display: block; }
+.mode-stationary .stat-conn-dot { display: block; }
 
 /* dock */
 .dock {
