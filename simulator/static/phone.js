@@ -78,12 +78,31 @@ function flashPulse() {
 }
 
 // --- WebSocket link ---
+let simMode = "free"; // mirrors the sim's current display mode
+function applyMode(next) {
+  if (next !== "free" && next !== "stationary") return;
+  if (simMode === next) return;
+  simMode = next;
+  app.classList.toggle("mode-stationary", simMode === "stationary");
+  if (simMode === "stationary") {
+    // Throttle is irrelevant — show it locked, force value to neutral.
+    throttle = 0.5;
+    throttleDirty = true;
+    drawThrottle();
+    vibrate(12);
+  } else {
+    vibrate(6);
+  }
+}
+
 const link = connect({
   role: "phone",
   onState: setConn,
   onMessage: (msg) => {
     if (msg.type === "ping" && typeof msg.t === "number") {
       link.send({ type: "pong", t: msg.t });
+    } else if (msg.type === "mode" && typeof msg.value === "string") {
+      applyMode(msg.value);
     }
   },
 });

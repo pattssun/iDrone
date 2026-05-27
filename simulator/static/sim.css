@@ -117,6 +117,56 @@ html, body {
   color: var(--text);
 }
 
+/* mode toggle (floating, under topbar, right side) */
+.mode-toggle {
+  top: 64px;
+  right: 24px;
+  display: inline-flex;
+  align-items: stretch;
+  padding: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: auto;
+  position: fixed;
+}
+.mode-opt {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.18s;
+  -webkit-tap-highlight-color: transparent;
+}
+.mode-opt svg { color: currentColor; opacity: 0.8; }
+.mode-opt:hover { color: var(--text); }
+.mode-opt.active { color: #001722; }
+.mode-thumb {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  height: calc(100% - 8px);
+  width: var(--thumb-w, 0px);
+  transform: translateX(var(--thumb-x, 4px));
+  background: var(--accent);
+  border-radius: 999px;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), width 0.28s;
+  box-shadow: 0 0 28px rgba(0, 194, 255, 0.4);
+  pointer-events: none;
+}
+
 /* attitude indicator */
 .hud.att { left: 24px; bottom: 28px; }
 .att-card {
@@ -270,6 +320,16 @@ html, body {
 }
 .tel-card .pos .v { display: grid; grid-template-columns: 16px 1fr 16px 1fr 16px 1fr; gap: 4px; font-size: 13px; text-align: right; }
 .tel-card .pos .ax { color: var(--accent); text-align: right; }
+
+/* stationary mode adjustments */
+body.mode-stationary .tel-card .row.pos,
+body.mode-stationary .tel-card .row:has(#v-vsp),
+body.mode-stationary .tel-card .row:has(#v-hsp),
+body.mode-stationary .tel-card .row:has(#v-thr) {
+  opacity: 0.35;
+}
+body.mode-stationary .hud.compass { opacity: 0.5; }
+/* In stationary the trail just sits at a point — clearer to hide it (handled in JS) */
 
 /* hint card */
 .hud.hint {

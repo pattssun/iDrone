@@ -23,6 +23,7 @@
         <div class="link">
           <span class="dot" id="conn-dot"></span>
           <span class="link-label" id="conn-label">linking</span>
+          <span class="mode-pill" id="mode-pill" aria-hidden="true">STATIONARY</span>
         </div>
         <div class="metrics">
           <span class="metric"><span class="m-v" id="send-rate">--</span><span class="m-u">Hz</span></span>
@@ -109,6 +110,13 @@
                   <div class="thr-fill" id="thr-fill"></div>
                   <div class="thr-knob" id="thr-knob">
                     <div class="thr-knob-bar"></div>
+                  </div>
+                  <div class="thr-locked" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="22" height="22">
+                      <rect x="5" y="11" width="14" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                      <path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                    </svg>
+                    <span>LOCKED</span>
                   </div>
                 </div>
                 <div class="thr-ladder">
