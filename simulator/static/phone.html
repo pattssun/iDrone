@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>iDrone Controller</title>
-    <link rel="stylesheet" href="/static/phone.css?v=7" />
+    <link rel="stylesheet" href="/static/phone.css?v=8" />
   </head>
   <body>
     <main id="app" class="state-awaiting">
@@ -158,9 +158,9 @@
       <!-- Tiny activity tick so packets-flowing feel alive -->
       <div class="pulse" id="pulse" aria-hidden="true"></div>
 
-      <!-- Stationary landing pad — overlays any phone state when sim mode is stationary -->
-      <div class="landing-pad" aria-hidden="true">
-        <div class="pad-label">STATIONARY · LANDING PAD</div>
+      <!-- Landing pad — the welcome surface and also the in-flight stationary overlay. -->
+      <div class="landing-pad" id="landing-pad">
+        <div class="pad-label"></div>
         <div class="pad-aura"></div>
         <div class="pad-ripple"></div>
         <div class="pad-ripple"></div>
@@ -171,11 +171,17 @@
           <div class="pad-circle"></div>
           <div class="pad-circle"></div>
         </div>
+        <div class="pad-ready" aria-hidden="true">READY</div>
+        <!-- Intro animation: energy beam shoots up from drone, flash above. -->
+        <div class="intro-beam" aria-hidden="true"></div>
+        <div class="intro-flash" aria-hidden="true"></div>
         <div class="pad-landed-label">DOCKED · SPACE TO RELEASE</div>
       </div>
+      <!-- Fallback motion permission tap target (shown only on live if we never got permission). -->
+      <button class="motion-grant" id="motion-grant" type="button">TAP TO ENABLE MOTION</button>
       <span class="dot stat-conn-dot" id="stat-conn-dot" aria-hidden="true"></span>
     </main>
 
-    <script type="module" src="/static/phone.js?v=7"></script>
+    <script type="module" src="/static/phone.js?v=8"></script>
   </body>
 </html>

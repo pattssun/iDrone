@@ -1,6 +1,6 @@
 // Phone controller — orientation + throttle slider, relayed to the sim.
 
-import { connect } from "/static/js/ws.js?v=7";
+import { connect } from "/static/js/ws.js?v=8";
 
 // --- DOM ---
 const app = document.getElementById("app");
@@ -63,7 +63,7 @@ let pulseLastAt = 0;
 // --- Helpers ---
 function setStateClass(s) {
   state = s;
-  app.classList.remove("state-awaiting", "state-calibrating", "state-live");
+  app.classList.remove("state-awaiting", "state-calibrating", "state-docking", "state-live");
   app.classList.add(`state-${s}`);
 }
 function setConn(s) {
@@ -126,14 +126,16 @@ const link = connect({
     } else if (msg.type === "mode" && typeof msg.value === "string") {
       applyMode(msg.value);
     } else if (msg.type === "landed") {
-      // Explicit value from the sim. Force a clean restart of the CSS
-      // animations by toggling off briefly if already landed (so a re-press
-      // of Space replays the ripple burst even though .landed stays on).
-      if (simMode !== "stationary") return;
       const next = !!msg.value;
+      if (state === "awaiting" || state === "docking") {
+        // Boot path: Space on the desktop is the user's "start" gesture.
+        if (next) performDock();
+        return;
+      }
+      // In-flight path: only meaningful while the pad is showing (stationary).
+      if (simMode !== "stationary") return;
       if (next && app.classList.contains("landed")) {
         app.classList.remove("landed");
-        // Reflow flushes the in-flight animations.
         void app.offsetWidth;
       }
       app.classList.toggle("landed", next);
@@ -223,17 +225,75 @@ async function requestPermission() {
   return true;
 }
 
-startBtn.addEventListener("click", async () => {
-  startBtn.disabled = true;
-  const ok = await requestPermission();
-  if (!ok) {
-    startBtn.disabled = false;
-    return;
-  }
+// --- Pad-based welcome / docking flow ---
+let gyroPermissionGranted = false;
+let introPlayed = false;
+const landingPadEl = document.getElementById("landing-pad");
+const motionGrantBtn = document.getElementById("motion-grant");
+
+// Browsers that don't gate motion behind a user gesture (Android Chrome,
+// desktop) can be auto-armed at load so Space alone starts the flow.
+(function autoArmIfNoPermissionGate() {
+  const gated =
+    typeof DeviceOrientationEvent !== "undefined" &&
+    typeof DeviceOrientationEvent.requestPermission === "function";
+  if (gated) return;
+  gyroPermissionGranted = true;
   window.addEventListener("deviceorientation", onOrientation);
+  app.classList.add("pad-armed");
+})();
+
+async function armPadFromUserGesture() {
+  if (gyroPermissionGranted) return true;
+  const ok = await requestPermission();
+  if (!ok) return false;
+  gyroPermissionGranted = true;
+  window.addEventListener("deviceorientation", onOrientation);
+  app.classList.add("pad-armed");
   vibrate(8);
-  startCalibration();
+  motionGrantBtn?.classList.remove("show");
+  return true;
+}
+
+// Tap on the pad (only meaningful while it's the welcome surface).
+landingPadEl?.addEventListener("click", (e) => {
+  if (state !== "awaiting" && state !== "docking") return;
+  // Don't intercept if the user happens to tap a child button.
+  if (e.target.closest("button")) return;
+  armPadFromUserGesture();
 });
+
+// Fallback motion-grant button (shown only if we reached live without perm).
+motionGrantBtn?.addEventListener("click", armPadFromUserGesture);
+
+// Original "Tap to start" button is hidden by CSS but keep it as a safety net.
+startBtn?.addEventListener("click", async () => {
+  await armPadFromUserGesture();
+});
+
+async function performDock() {
+  // Snapshot the current orientation as the calibration baseline — the
+  // phone is laying flat with the drone on it, which is the "level" pose.
+  if (lastOrient && (lastOrient.beta !== 0 || lastOrient.gamma !== 0 || lastOrient.alpha !== 0)) {
+    baseline = { b: lastOrient.beta, g: lastOrient.gamma, a: lastOrient.alpha };
+  }
+  if (!introPlayed) {
+    introPlayed = true;
+    setStateClass("docking");
+    vibrate([10, 40, 10]);
+    // Match the intro animation duration (beam-rise + flash-burst).
+    setTimeout(() => {
+      setStateClass("live");
+      // If the user never tapped the pad (no gyro permission), surface the
+      // fallback prompt on the live screen so they can still get motion.
+      if (!gyroPermissionGranted) motionGrantBtn?.classList.add("show");
+    }, 1700);
+  } else {
+    // Subsequent dock from the welcome state: skip the intro, hop to live.
+    setStateClass("live");
+    if (!gyroPermissionGranted) motionGrantBtn?.classList.add("show");
+  }
+}
 
 calibrateBtn.addEventListener("click", () => {
   link.send({ type: "calibrate" });
