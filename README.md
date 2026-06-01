@@ -1,6 +1,6 @@
 # iDrone: Control a drone with your hand
 
-**Watch it fly:** [Instagram](https://www.instagram.com/p/DX7eG0mR4I6/?hl=en) (2.6M+ views), [TikTok](https://www.tiktok.com/@pattssun/video/7636158433917488398) (1.3M+ views)
+**Watch it fly:** [Instagram](https://www.instagram.com/reel/DYAmjTyxKFW/?utm_source=ig_web_copy_link&igsh=MzRlODBiNWFlZA==) (3.2M+ views), [TikTok](https://www.tiktok.com/@pattssun/video/7636158433917488398) (1.3M+ views)
 
 A MacBook watches my right hand through the webcam. When I open my hand with fingers pointing up, the drone climbs. Fingers down, it descends. Fist, it hovers. Under the hood, a Raspberry Pi Pico W is hot-wired into a Holy Stone HS210 remote, feeding voltage straight into the throttle stick's wiper pad like a robot thumb.
 
